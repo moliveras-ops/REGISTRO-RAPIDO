@@ -1,52 +1,75 @@
 <!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registro Rápido</title>
-<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@9.0.2/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
-body{font-family:sans-serif;margin:0;background:#f2f4f7}header{background:#0b3d6e;color:#fff;padding:12px;font-size:20px}
-main{padding:10px}.card{background:#fff;border-radius:8px;padding:10px;margin:8px 0;box-shadow:0 1px 3px #0002}
-.comp{margin-left:14px;border-left:3px solid #0b3d6e;padding-left:8px}button{padding:8px 10px;margin:3px;border:0;border-radius:6px;background:#0b3d6e;color:#fff}
-button.del{background:#b00}input,textarea{width:100%;padding:6px;margin:3px 0;box-sizing:border-box}img{width:90px;height:90px;object-fit:cover;margin:3px;border-radius:4px}
+*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;background:#eef1f5}
+header{background:#0b3d6e;color:#fff;padding:12px 14px;font-size:20px;font-weight:600;position:sticky;top:0;z-index:5;display:flex;gap:6px;align-items:center}
+header span{flex:1}main{padding:10px;padding-bottom:80px}
+.n{background:#fff;border-radius:10px;padding:8px;margin:8px 0;box-shadow:0 1px 3px #0002}
+.n .n{margin-left:10px;border-left:4px solid #0b3d6e;box-shadow:none;background:#f7f9fc}
+.n .n .n{border-left-color:#e08a00;background:#fffaf2}
+.row{display:flex;gap:6px;align-items:center}.row input{flex:1;font-size:16px;padding:8px;border:1px solid #ccd;border-radius:6px}
+.tag{font-size:11px;color:#fff;background:#0b3d6e;border-radius:4px;padding:2px 5px}.c .tag{background:#2a6fb0}.s .tag{background:#e08a00}
+button{font-size:14px;padding:8px 10px;border:0;border-radius:6px;background:#0b3d6e;color:#fff}
+button.x{background:#c62828;padding:8px 11px}button.g{background:#2e7d32}
+.fotos{display:flex;gap:8px;margin:6px 0}.slot{width:110px;height:110px;border:2px dashed #99a;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:30px;color:#99a;position:relative;overflow:hidden}
+.slot img{width:100%;height:100%;object-fit:cover}.slot b{position:absolute;top:2px;right:4px;color:#fff;background:#c62828;border-radius:50%;width:22px;height:22px;font-size:14px;text-align:center;line-height:22px}
+#bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:8px;display:flex;gap:8px;box-shadow:0 -2px 6px #0002}#bar button{flex:1;padding:12px}
+#tit{width:100%;font-size:16px;padding:8px;border-radius:6px;border:1px solid #ccd}
 </style></head><body>
-<header>Registro Rápido</header><main>
-<div class="card"><input id="titulo" placeholder="Título del informe"><input id="np" placeholder="Nombre de la nueva parte">
-<button onclick="addParte()">+ Parte</button><button onclick="genWord()">Generar informe Word</button></div>
-<div id="lista"></div></main>
+<header><span>Registro Rápido</span><button class="x" onclick="if(confirm('¿Borrar todo?')){D={titulo:'',partes:[]};save();render()}">Nuevo</button></header>
+<main><input id="tit" placeholder="Título del informe"><div id="L"></div>
+<button style="width:100%;margin-top:6px;padding:12px" onclick="addP()">+ Parte</button></main>
+<div id="bar"><button onclick="word()">Informe Word</button><button class="g" onclick="pdf()">Informe PDF</button></div>
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
 <script>
-let D=JSON.parse(localStorage.getItem('rr')||'{"titulo":"","partes":[]}');
-const save=()=>localStorage.setItem('rr',JSON.stringify(D));
-titulo.value=D.titulo;titulo.oninput=()=>{D.titulo=titulo.value;save()};
-function addParte(){if(!np.value)return;D.partes.push({nombre:np.value,comps:[]});np.value='';save();render()}
-function addComp(i){const n=prompt('Nombre del componente / subcomponente');if(n){D.partes[i].comps.push({nombre:n,obs:'',fotos:[]});save();render()}}
-function delP(i){if(confirm('¿Eliminar parte?')){D.partes.splice(i,1);save();render()}}
-function delC(i,j){if(confirm('¿Eliminar componente?')){D.partes[i].comps.splice(j,1);save();render()}}
-function G(i,j,s){const c=D.partes[i].comps[j];return s==null?c:c.subs[s]}
-function addSub(i,j){const n=prompt('Nombre del subcomponente');if(n){const c=D.partes[i].comps[j];(c.subs=c.subs||[]).push({nombre:n,obs:'',fotos:[]});save();render()}}
-function delS(i,j,s){if(confirm('¿Eliminar subcomponente?')){D.partes[i].comps[j].subs.splice(s,1);save();render()}}
-function delF(i,j,k,s){G(i,j,s).fotos.splice(k,1);save();render()}
-function foto(i,j,inp,s){[...inp.files].forEach(f=>{const r=new FileReader();r.onload=e=>{const im=new Image();im.onload=()=>{
-const c=document.createElement('canvas'),s=Math.min(1,1200/Math.max(im.width,im.height));c.width=im.width*s;c.height=im.height*s;
-c.getContext('2d').drawImage(im,0,0,c.width,c.height);G(i,j,s).fotos.push({src:c.toDataURL('image/jpeg',.75),w:c.width,h:c.height,txt:''});save();render()};im.src=e.target.result};r.readAsDataURL(f)})}
-function blk(i,j,s,c){const a=s==null?`${i},${j},null`:`${i},${j},${s}`;
-return `<textarea placeholder="Observaciones" oninput="G(${a}).obs=this.value;save()">${c.obs}</textarea>
-<button onclick="this.nextElementSibling.click()">Agregar foto</button><input type="file" accept="image/*" multiple hidden onchange="foto(${i},${j},this,${s==null?'null':s})"><br>
-${c.fotos.map((f,k)=>`<img src="${f.src}" onclick="if(confirm('¿Borrar foto?'))delF(${i},${j},${k},${s==null?'null':s})">`).join('')}`}
-function render(){lista.innerHTML=D.partes.map((p,i)=>`<div class="card"><b>${p.nombre}</b>
-<button onclick="addComp(${i})">+ Componente</button><button class="del" onclick="delP(${i})">X</button>
-${p.comps.map((c,j)=>`<div class="comp"><b>${c.nombre}</b><button onclick="addSub(${i},${j})">+ Subcomponente</button><button class="del" onclick="delC(${i},${j})">X</button>
-${blk(i,j,null,c)}
-${(c.subs||[]).map((u,s)=>`<div class="comp"><b>${u.nombre}</b><button class="del" onclick="delS(${i},${j},${s})">X</button>${blk(i,j,s,u)}</div>`).join('')}
-</div>`).join('')}</div>`).join('')}
+let D=JSON.parse(localStorage.getItem('rr2')||'{"titulo":"","partes":[]}');
+const save=()=>{try{localStorage.setItem('rr2',JSON.stringify(D))}catch(e){alert('Memoria llena: genera el informe y usa "Nuevo".')}};
+tit.value=D.titulo;tit.oninput=()=>{D.titulo=tit.value;save()};
+const nuevo=()=>({nombre:'',fotos:[null,null],hijos:[]});
+function get(p){let o={hijos:D.partes};p.forEach(i=>o=o.hijos[i]);return o}
+function addP(){D.partes.push(nuevo());save();render(true)}
+function addH(p){get(p).hijos.push(nuevo());save();render(true)}
+function del(p){if(!confirm('¿Eliminar?'))return;const par=p.length>1?get(p.slice(0,-1)):{hijos:D.partes};par.hijos.splice(p.at(-1),1);save();render()}
+function setN(p,v){get(p).nombre=v;save()}
+function delF(p,k,e){e.stopPropagation();get(p).fotos[k]=null;save();render()}
+let tgt=null;function shot(p,k){tgt=[p,k];cam.value='';cam.click()}
+cam.onchange=()=>{const f=cam.files[0];if(!f||!tgt)return;const im=new Image();im.onload=()=>{
+const c=document.createElement('canvas'),s=Math.min(1,1280/Math.max(im.width,im.height));c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);
+c.getContext('2d').drawImage(im,0,0,c.width,c.height);get(tgt[0]).fotos[tgt[1]]={src:c.toDataURL('image/jpeg',.72),w:c.width,h:c.height};URL.revokeObjectURL(im.src);save();render()};
+im.src=URL.createObjectURL(f)};
+const NIV=['Parte','Componente','Subparte'],CL=['','c','s'];
+function nodo(o,p){const lv=p.length-1,ps=JSON.stringify(p);
+return `<div class="n ${CL[lv]}"><div class="row"><span class="tag">${NIV[lv]}</span>
+<input value="${(o.nombre||'').replace(/"/g,'&quot;')}" placeholder="Nombre ${NIV[lv].toLowerCase()}" oninput='setN(${ps},this.value)'>
+<button class="x" onclick='del(${ps})'>X</button></div>
+<div class="fotos">${[0,1].map(k=>`<div class="slot" onclick='shot(${ps},${k})'>${o.fotos[k]?`<img src="${o.fotos[k].src}"><b onclick='delF(${ps},${k},event)'>×</b>`:'📷'}</div>`).join('')}</div>
+${o.hijos.map((h,i)=>nodo(h,[...p,i])).join('')}
+${lv<2?`<button onclick='addH(${ps})'>+ ${NIV[lv+1]}</button>`:''}</div>`}
+function render(focus){L.innerHTML=D.partes.map((o,i)=>nodo(o,[i])).join('');if(focus){const a=L.querySelectorAll('input');a[a.length-1]?.focus()}}
 render();
-async function genWord(){const {Document,Packer,Paragraph,TextRun,ImageRun,HeadingLevel}=docx;const ch=[];
-ch.push(new Paragraph({text:D.titulo||'Informe',heading:HeadingLevel.TITLE}));
-ch.push(new Paragraph('Fecha: '+new Date().toLocaleDateString('es-CL')));
-D.partes.forEach((p,i)=>{ch.push(new Paragraph({text:(i+1)+'. '+p.nombre,heading:HeadingLevel.HEADING_1}));
-p.comps.forEach((c,j)=>{ch.push(new Paragraph({text:(i+1)+'.'+(j+1)+' '+c.nombre,heading:HeadingLevel.HEADING_2}));
-const pf=(x,t)=>{if(x.obs)ch.push(new Paragraph(x.obs));x.fotos.forEach((f,k)=>{const w=400,hh=Math.round(f.h*w/f.w);
-ch.push(new Paragraph({children:[new ImageRun({data:Uint8Array.from(atob(f.src.split(',')[1]),z=>z.charCodeAt(0)),transformation:{width:w,height:hh}})]}));
-ch.push(new Paragraph({children:[new TextRun({text:'Foto '+(k+1)+': '+t,italics:true})]}))})};
-pf(c,c.nombre);(c.subs||[]).forEach((u,s)=>{ch.push(new Paragraph({text:(i+1)+'.'+(j+1)+'.'+(s+1)+' '+u.nombre,heading:HeadingLevel.HEADING_3}));pf(u,u.nombre)})})});
-const b=await Packer.toBlob(new Document({sections:[{children:ch}]}));const a=document.createElement('a');
-a.href=URL.createObjectURL(b);a.download=(D.titulo||'Informe')+'.docx';a.click()}
+function lista(){const r=[];const walk=(o,ruta,num)=>{const nm=o.nombre||'(sin nombre)';const R=[...ruta,nm];r.push({nivel:ruta.length,num,titulo:num+' '+nm,ruta:R.join(' - '),fotos:o.fotos.filter(Boolean)});
+o.hijos.forEach((h,i)=>walk(h,R,num+'.'+(i+1)))};D.partes.forEach((o,i)=>walk(o,[],String(i+1)));return r}
+const fname=e=>(D.titulo||'Informe Registro Rapido').replace(/[\\/:*?"<>|]/g,'')+'.'+e;
+const fecha=()=>new Date().toLocaleDateString('es-CL');
+function b64(s){const b=atob(s.split(',')[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+async function word(){if(!window.docx)return alert('Sin conexión a la librería Word');
+const {Document,Packer,Paragraph,TextRun,ImageRun,HeadingLevel,AlignmentType}=docx;const ch=[
+new Paragraph({heading:HeadingLevel.TITLE,children:[new TextRun(D.titulo||'Informe')]}),new Paragraph({children:[new TextRun('Fecha: '+fecha())]})];
+const H=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3];
+lista().forEach(e=>{ch.push(new Paragraph({heading:H[e.nivel],children:[new TextRun(e.titulo)]}));
+e.fotos.forEach((f,k)=>{const w=420,h=Math.round(f.h*w/f.w);
+ch.push(new Paragraph({alignment:AlignmentType.CENTER,children:[new ImageRun({type:'jpg',data:b64(f.src),transformation:{width:w,height:h}})]}));
+ch.push(new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:'Foto '+(k+1)+': '+e.ruta,italics:true,size:18})]}))})});
+const blob=await Packer.toBlob(new Document({sections:[{children:ch}]}));bajar(blob,fname('docx'))}
+function pdf(){if(!window.jspdf)return alert('Sin conexión a la librería PDF');const d=new jspdf.jsPDF({unit:'mm',format:'a4'});let y=20;
+const nl=h=>{if(y+h>285){d.addPage();y=15}};
+d.setFontSize(18);d.text(D.titulo||'Informe',105,y,{align:'center'});y+=8;d.setFontSize(10);d.text('Fecha: '+fecha(),105,y,{align:'center'});y+=10;
+lista().forEach(e=>{nl(10);d.setFontSize([14,12,11][e.nivel]);d.setFont(undefined,'bold');d.text(e.titulo,15+e.nivel*5,y);d.setFont(undefined,'normal');y+=7;
+e.fotos.forEach((f,k)=>{let w=110,h=f.h*w/f.w;if(h>120){h=120;w=f.w*h/f.h}nl(h+8);d.addImage(f.src,'JPEG',105-w/2,y,w,h);y+=h+4;
+d.setFontSize(9);d.text('Foto '+(k+1)+': '+e.ruta,105,y,{align:'center'});y+=7})});
+bajar(d.output('blob'),fname('pdf'))}
+function bajar(b,n){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove()}
 </script></body></html>
