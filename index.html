@@ -77,8 +77,22 @@ button.mv{background:#556}
 #mov .dst.l1{margin-left:16px;width:calc(100% - 16px)}#mov .dst.l2{margin-left:32px;width:calc(100% - 32px)}
 #mov .dst small{display:block;font-weight:400;color:#556;font-size:12px;margin-top:2px}
 #mov .nota{font-size:12px;color:#667;margin-top:8px}
+#btnNube{background:#ffffff26;font-size:18px;padding:6px 10px;position:relative}
+#btnNube::after{content:'';position:absolute;right:4px;bottom:4px;width:9px;height:9px;border-radius:50%;background:transparent}
+#btnNube.ok::after{background:#4caf50}#btnNube.sync::after{background:#ffd54f}#btnNube.err::after,#btnNube.warn::after{background:#ff7043}
+#nube{position:fixed;inset:0;background:#0008;z-index:15;display:none;align-items:flex-end;justify-content:center}
+#nube.on{display:flex}
+#nube .card{background:#fff;width:100%;max-width:560px;border-radius:14px 14px 0 0;padding:14px 16px;padding-bottom:max(16px,env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+#nube h3{margin:0 0 6px;color:#0b3d6e;display:flex;align-items:center}#nube h3 span{flex:1}
+#nube h3 button{background:#c62828;border-radius:50%;width:34px;height:34px;padding:0;font-size:19px}
+#nube p{margin:8px 0;font-size:14px;line-height:1.35}#nube .mini{font-size:12px;color:#667}
+#nube .est{font-weight:600;color:#0b3d6e}#nube .est.err,#nube .est.warn{color:#b3261e}#nube .est.ok{color:#2e7d32}
+#nube .nb{display:block;width:100%;margin:8px 0;padding:12px;font-size:15px}
+#nube .nb.sec{background:#2a6fb0}#nube .nb.out{background:none;color:#b3261e;text-decoration:underline;font-size:13px}
+#nube .lst button{display:block;width:100%;text-align:left;background:#e8eef6;color:#0b3d6e;margin:6px 0;padding:10px}
+#nube .lst small{display:block;color:#556;font-size:12px;margin-top:2px}
 </style></head><body>
-<header><span>Registro Rápido <small id="pend"></small></span><button class="x" id="btnNuevo">Nuevo</button></header>
+<header><span>Registro Rápido <small id="pend"></small></span><button id="btnNube" aria-label="Respaldo en la nube">☁️</button><button class="x" id="btnNuevo">Nuevo</button></header>
 <main>
 <input id="tit" placeholder="Título del informe" autocomplete="off">
 <div id="L"></div>
@@ -86,6 +100,7 @@ button.mv{background:#556}
 </main>
 <div id="bar"><button id="btnWord">Informe Word</button><button class="g" id="btnPdf">Informe PDF</button><button class="z" id="btnZip">ZIP + videos</button></div>
 <div id="msg"></div>
+<div id="nube"><div class="card"><h3><span>☁️ Respaldo en la nube</span><button id="nube_x" aria-label="Cerrar">×</button></h3><div id="nube_c"></div></div></div>
 <div id="ver"><div class="vt"><span id="ver_t"></span><button id="ver_x" aria-label="Cerrar">×</button></div><img id="ver_i" alt=""><video id="ver_v" controls playsinline></video><div class="vb" id="ver_b"></div></div>
 <div id="mov"><div class="hc"><div class="ht"><span id="mov_t"></span><button id="mov_x" aria-label="Cerrar">×</button></div>
 <div class="pos" id="mov_p"></div><div class="hrow"><button id="mov_up">↑ Subir</button><button id="mov_dn">↓ Bajar</button></div>
@@ -102,8 +117,9 @@ const NIV=['Parte','Componente','Subparte'],CL=['','c','s'],MAXF=4;
 let D={titulo:'',partes:[]};
 try{D=JSON.parse(localStorage.getItem(KEY))||D}catch(e){}
 // fotos: lista compacta de ids (hasta 4)
-(function norm(l){l.forEach(o=>{o.fotos=(o.fotos||[]).filter(Boolean).slice(0,MAXF);o.video=o.video||null;o.hijos=o.hijos||[];norm(o.hijos)})})(D.partes);
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){toast('No se pudo guardar')}updPend()};
+function normalizar(l){l.forEach(o=>{o.fotos=(o.fotos||[]).filter(Boolean).slice(0,MAXF);o.video=o.video||null;o.hijos=o.hijos||[];normalizar(o.hijos)})}
+normalizar(D.partes);
+const save=sinNube=>{if(!D.rid)D.rid=uid();try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){toast('No se pudo guardar')}updPend();if(!sinNube)programarRespaldo()};
 function pendientes(){let n=0;const w=o=>{if(o.req&&!o.fotos.length)n++;o.hijos.forEach(w)};D.partes.forEach(w);return n}
 function updPend(){const n=pendientes();pend.textContent=n?n+' sin foto':''}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -201,7 +217,8 @@ L.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b|
 });
 addP.onclick=()=>{D.partes.push(nuevo());save();render(String(D.partes.length-1))};
 tit.value=D.titulo||'';tit.oninput=()=>{D.titulo=tit.value;save()};
-btnNuevo.onclick=async()=>{if(!confirm('¿Borrar todo el registro y sus fotos?'))return;
+btnNuevo.onclick=async()=>{if(!confirm(usuario?'¿Empezar un registro nuevo? El actual queda respaldado en la nube y se borra del teléfono.':'¿Borrar todo el registro y sus fotos?'))return;
+ if(usuario&&(D.partes.length||(D.titulo||'').trim())&&!(await respaldar(false))&&!confirm('No se pudo respaldar en la nube. ¿Borrar igual?'))return;
  D={titulo:'',partes:[]};save();urls.forEach(u=>URL.revokeObjectURL(u));urls.clear();tit.value='';render();await fClear().catch(()=>{});toast('Registro vacío')};
 
 /* ===== Fotos ===== */
@@ -417,6 +434,95 @@ async function zip(){await cargar('lib/jszip.min.js');const z=new window.JSZip()
  for(const e of lista()){const vi=await videoInforme(e);if(vi){z.file(vi.archivo,vi.blob,{binary:true});nv++}}
  const out=await z.generateAsync({type:'blob',compression:'STORE'});bajar(out,fname('zip'));if(!nv)toast('ZIP sin videos (no hay videos cargados)',3000)}
 btnWord.onclick=()=>generar('Word',word);btnPdf.onclick=()=>generar('PDF',pdf);btnZip.onclick=()=>generar('ZIP',zip);
+
+/* ===== Respaldo en la nube (Firebase: Google + Firestore + Storage) ===== */
+const firebaseConfig = {
+  apiKey: "AIzaSyCOiVsDs9mBVt0sY9Unz2OWCl7a-isCNdQ",
+  authDomain: "registro-rapido-1008b.firebaseapp.com",
+  projectId: "registro-rapido-1008b",
+  storageBucket: "registro-rapido-1008b.firebasestorage.app",
+  messagingSenderId: "587487740967",
+  appId: "1:587487740967:web:5ba718a852a846424fba02"
+};
+var FB=null,fbP=null,usuario=null,bkOcupado=false,bkOtra=false,bkT=0,nubeEstado='',nubeLista=null;
+function fbInit(){return fbP||(fbP=(async()=>{
+ if(window.__FB_MOCK){FB=window.__FB_MOCK}else{
+  const B='https://www.gstatic.com/firebasejs/11.10.0/';
+  const [ap,au,fs,st]=await Promise.all(['firebase-app','firebase-auth','firebase-firestore','firebase-storage'].map(m=>import(B+m+'.js')));
+  const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app),S=st.getStorage(app);
+  FB={onUser:cb=>au.onAuthStateChanged(A,cb),login:()=>au.signInWithPopup(A,new au.GoogleAuthProvider()),logout:()=>au.signOut(A),
+   put:(path,blob)=>st.uploadBytes(st.ref(S,path),blob,{contentType:blob.type||'application/octet-stream'}),
+   getBlob:path=>st.getBlob(st.ref(S,path)),
+   setDoc:(path,data)=>fs.setDoc(fs.doc(F,path),{...data,actualizado:fs.serverTimestamp()}),
+   getDoc:async path=>{const d=await fs.getDoc(fs.doc(F,path));return d.exists()?d.data():null},
+   list:async path=>{const r=await fs.getDocs(fs.query(fs.collection(F,path),fs.orderBy('actualizado','desc'),fs.limit(50)));
+    return r.docs.map(d=>{const x=d.data();return{id:d.id,titulo:x.titulo,nFotos:x.nFotos,nVideos:x.nVideos,fecha:x.actualizado&&x.actualizado.toDate?x.actualizado.toDate():null}})}}}
+ FB.onUser(u=>{usuario=u;if(u){localStorage.setItem('rr_login','1');nubeEstado=nubeEstado||'';programarRespaldo(1500)}else{localStorage.removeItem('rr_login')}pintarNube()});
+ return FB})().catch(e=>{fbP=null;throw e}))}
+const subKey=()=>'rr_sub_'+(usuario?usuario.uid:'');
+function subidos(){try{return new Set(JSON.parse(localStorage.getItem(subKey())||'[]'))}catch(e){return new Set()}}
+function marcarSubido(s){try{localStorage.setItem(subKey(),JSON.stringify([...s]))}catch(e){}}
+function programarRespaldo(ms=15000){if(!usuario)return;clearTimeout(bkT);bkT=setTimeout(()=>respaldar(false),ms)}
+function estadoNube(t,clase){nubeEstado=t;btnNube.className=clase||'';pintarNube()}
+function mediaIds(){const a=[];const w=o=>{o.fotos.forEach(f=>a.push(f));if(o.video)a.push(o.video);o.hijos.forEach(w)};D.partes.forEach(w);return a}
+async function serial(x,path,subir){if(x instanceof Blob){if(subir)await FB.put(path,x);return{__b:path,t:x.type||''}}
+ if(x&&typeof x==='object'&&!Array.isArray(x)){const o={};for(const k of Object.keys(x))o[k]=await serial(x[k],path+'/'+k,subir);return o}return x}
+async function deserial(x){if(x&&typeof x==='object'&&x.__b){const b=await FB.getBlob(x.__b);return x.t&&b.type!==x.t?new Blob([b],{type:x.t}):b}
+ if(x&&typeof x==='object'&&!Array.isArray(x)){const o={};for(const k of Object.keys(x))o[k]=await deserial(x[k]);return o}return x}
+async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con Google');return false}
+ if(!navigator.onLine){estadoNube('Sin conexión: se respaldará al volver la señal','warn');return false}
+ if(!D.partes.length&&!(D.titulo||'').trim())return true;
+ if(bkOcupado){bkOtra=true;return false}bkOcupado=true;clearTimeout(bkT);
+ try{const u=usuario.uid;if(!D.rid){D.rid=uid();save(true)}
+  const ids=mediaIds(),sub=subidos(),media={};let n=0,nv=0;
+  for(const id of ids){const v=await fGet(id);if(!v)continue;const nuevoArch=!sub.has(id);
+   if(nuevoArch)estadoNube('Subiendo '+(++n)+'…','sync');
+   media[id]=await serial(v,'users/'+u+'/media/'+id,nuevoArch);if(nuevoArch){sub.add(id);marcarSubido(sub)}
+   if(v.poster||(v.blob&&/^video/.test(v.blob.type)))nv++}
+  await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(media),nFotos:ids.length-nv,nVideos:nv});
+  localStorage.setItem('rr_bk',String(Date.now()));nubeLista=null;
+  estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}),'ok');if(manual)toast('Respaldo completo ☁️');return true}
+ catch(e){console.error(e);estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
+ finally{bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
+function errNube(e){const c=(e&&e.code)||'';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
+ if(/popup-closed|cancelled-popup/.test(c))return 'ventana cerrada';if(/popup-blocked/.test(c))return 'ventana bloqueada por el navegador';
+ if(/unauthorized-domain/.test(c))return 'dominio no autorizado en Firebase';if(/network|unavailable/.test(c))return 'sin conexión';
+ if(/quota|billing|project-not-found|bucket/i.test(c+' '+(e.message||'')))return 'Storage no habilitado (requiere plan Blaze)';return (e&&e.message)||'error'}
+async function restaurar(rid){const u=usuario.uid;const doc=await FB.getDoc('users/'+u+'/registros/'+rid);if(!doc)return toast('Registro no encontrado');
+ const vacio=!D.partes.length&&!(D.titulo||'').trim();
+ if(!vacio&&!confirm('Se reemplazará el registro actual en pantalla por "'+(doc.titulo||'Sin título')+'". El actual queda respaldado en la nube. ¿Continuar?'))return;
+ if(!vacio&&!(await respaldar(false))&&!confirm('No se pudo respaldar el registro actual. ¿Reemplazarlo igual?'))return;
+ cerrarNube();const media=JSON.parse(doc.media||'{}'),ids=Object.keys(media),sub=subidos();let i=0;
+ try{for(const id of ids){i++;toast('Descargando '+i+' de '+ids.length+'…',0);if(!(await fGet(id))){await fPut(id,await deserial(media[id]))}sub.add(id)}marcarSubido(sub)}
+ catch(e){console.error(e);return toast('Error al descargar: '+errNube(e),4000)}
+ D=JSON.parse(doc.data);normalizar(D.partes);D.rid=rid;urls.forEach(u=>URL.revokeObjectURL(u));urls.clear();save(true);tit.value=D.titulo||'';render();updPend();
+ toast('Registro restaurado ✓')}
+async function abrirNube(){nubeEl.classList.add('on');pintarNube();
+ try{await fbInit()}catch(e){nubeEstado='No se pudo conectar con Firebase (¿sin internet?)';btnNube.className='err'}pintarNube()}
+function cerrarNube(){nubeEl.classList.remove('on')}
+async function verLista(){nubeLista='cargando';pintarNube();try{nubeLista=await FB.list('users/'+usuario.uid+'/registros')}catch(e){nubeLista=null;toast('Error: '+errNube(e),4000)}pintarNube()}
+function pintarNube(){if(!nubeEl.classList.contains('on'))return;const c=nube_c;
+ if(!FB){c.innerHTML=`<p>${esc(nubeEstado||'Conectando…')}</p>`;return}
+ if(!usuario){c.innerHTML=`<p>Entra con tu cuenta Google para respaldar automáticamente tus registros, fotos y videos. Si cambias o pierdes el teléfono, los recuperas entrando con la misma cuenta.</p>
+  <button class="nb" data-n="login">Entrar con Google</button>${nubeEstado?`<p class="est">${esc(nubeEstado)}</p>`:''}`;return}
+ const ult=+localStorage.getItem('rr_bk')||0;
+ c.innerHTML=`<p>Conectado como <b>${esc(usuario.email||usuario.displayName||'')}</b></p>
+  <p class="est ${btnNube.className}">${esc(nubeEstado||(ult?'Último respaldo: '+new Date(ult).toLocaleString('es-CL'):'Aún sin respaldo'))}</p>
+  <p class="mini">El registro actual se respalda solo, unos segundos después de cada cambio.</p>
+  <button class="nb" data-n="bk">Respaldar ahora</button>
+  <button class="nb sec" data-n="lista">Restaurar un registro de la nube</button>
+  ${nubeLista==='cargando'?'<p>Cargando…</p>':Array.isArray(nubeLista)?(nubeLista.length?'<div class="lst">'+nubeLista.map(r=>`<button data-n="rest" data-id="${esc(r.id)}"><b>${esc(r.titulo||'Sin título')}</b>${r.id===D.rid?' <i>(actual)</i>':''}<small>${r.fecha?r.fecha.toLocaleString('es-CL'):''} · ${r.nFotos||0} foto(s)${r.nVideos?' · '+r.nVideos+' video(s)':''}</small></button>`).join('')+'</div>':'<p>No hay registros en la nube.</p>'):''}
+  <button class="nb out" data-n="logout">Cerrar sesión</button>`}
+const nubeEl=document.getElementById('nube');
+btnNube.onclick=abrirNube;nube_x.onclick=cerrarNube;nubeEl.onclick=e=>{if(e.target===nubeEl)cerrarNube()};
+nube_c.addEventListener('click',async e=>{const b=e.target.closest('[data-n]');if(!b)return;const a=b.dataset.n;
+ if(a==='login'){try{nubeEstado='';await FB.login()}catch(err){estadoNube('No se pudo entrar: '+errNube(err),'err')}}
+ else if(a==='logout'){if(confirm('¿Cerrar sesión? Los datos en el teléfono no se borran.')){await FB.logout();nubeEstado='';nubeLista=null;btnNube.className=''}}
+ else if(a==='bk')respaldar(true);
+ else if(a==='lista')verLista();
+ else if(a==='rest')restaurar(b.dataset.id)});
+addEventListener('online',()=>programarRespaldo(3000));
+if(localStorage.getItem('rr_login')==='1')fbInit().catch(()=>{});
 
 /* ===== Migración desde la versión anterior (fotos en base64 dentro de localStorage) ===== */
 async function migrar(){const old=localStorage.getItem('rr2');if(!old||localStorage.getItem(KEY))return false;
