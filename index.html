@@ -29,6 +29,8 @@ button.x{background:#c62828}button.g{background:#2e7d32}button.add{background:#2
 .box .del{position:absolute;top:4px;right:4px;background:#c62828;color:#fff;border-radius:50%;width:28px;height:28px;padding:0;font-size:17px;line-height:28px}
 .ftog{background:#889;font-size:13px;padding:8px 12px;margin:6px 0 2px}
 .ftog.on{background:#2e7d32}
+.notab{display:block;background:#fff3d6;color:#8a5a00;font-size:13px;padding:8px 12px;margin:6px 0 2px}
+textarea.nota{display:block;width:100%;margin:6px 0 2px;font:15px system-ui,sans-serif;padding:8px 10px;border:1px solid #e0b252;border-left:5px solid #e08a00;border-radius:6px;background:#fffbf0;resize:vertical;min-height:44px}
 #pend{font-size:13px;color:#ffd54f;font-weight:500}
 .rot{font-size:12px;font-weight:600;color:#0b3d6e;background:#e8eef6;border-radius:0 0 8px 8px;padding:5px 6px;line-height:1.25;word-break:break-word;text-align:center}
 .rot.warn{color:#b3261e;background:#fdecea}
@@ -116,17 +118,17 @@ button.mv{background:#556}
 'use strict';
 /* ===== Almacenamiento: estructura en localStorage, fotos (Blob) en IndexedDB ===== */
 const KEY='rr3';
-const NIV=['Parte','Componente','Subparte'],CL=['','c','s'],MAXF=4;
+const NIV=['Parte','Componente','Subparte'],CL=['','c','s'],MAXF=12,MAXF_BASE=4; // 4 fotos normales + hasta 8 adicionales
 let D={titulo:'',partes:[]};
 try{D=JSON.parse(localStorage.getItem(KEY))||D}catch(e){}
 // fotos: lista compacta de ids (hasta 4)
-function normalizar(l){l.forEach(o=>{o.fotos=(o.fotos||[]).filter(Boolean).slice(0,MAXF);o.video=o.video||null;o.hijos=o.hijos||[];normalizar(o.hijos)})}
+function normalizar(l){l.forEach(o=>{o.fotos=(o.fotos||[]).filter(Boolean).slice(0,MAXF);o.video=o.video||null;o.nota=o.nota||'';o.hijos=o.hijos||[];normalizar(o.hijos)})}
 normalizar(D.partes);
 const save=sinNube=>{if(!D.rid)D.rid=uid();try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){toast('No se pudo guardar')}updPend();if(!sinNube)programarRespaldo()};
 function pendientes(){let n=0;const w=o=>{if(o.req&&!o.fotos.length)n++;o.hijos.forEach(w)};D.partes.forEach(w);return n}
 function updPend(){const n=pendientes();pend.textContent=n?n+' sin foto':''}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-const nuevo=()=>({id:uid(),nombre:'',req:false,fotos:[],video:null,hijos:[]});
+const nuevo=()=>({id:uid(),nombre:'',req:false,fotos:[],video:null,nota:'',hijos:[]});
 
 let dbP=null;
 function db(){return dbP||(dbP=new Promise((ok,ko)=>{const r=indexedDB.open('registro-rapido',1);
@@ -152,6 +154,9 @@ function ruta(p){const r=[];let o={hijos:D.partes};p.forEach((i,k)=>{o=o.hijos[i
 function fotosDe(o,acc=[]){o.fotos.forEach(f=>acc.push(f));if(o.video)acc.push(o.video);o.hijos.forEach(h=>fotosDe(h,acc));return acc}
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
+function notaHTML(o){return o.nota?`<textarea class="nota" data-a="nota" rows="2" placeholder="Escribe una nota u observación…">${esc(o.nota)}</textarea>`
+ :`<button class="notab" data-a="addNota">📝 Agregar nota</button>`}
+function ajustarNota(t){t.style.height='auto';t.style.height=(t.scrollHeight+2)+'px'}
 function nodo(o,p){const lv=p.length-1,ps=p.join('.');
  return `<div class="n ${CL[lv]}${lv===1?' s2':''}" data-p="${ps}">
 <div class="row"><span class="tag">${NIV[lv]} ${p.map(i=>i+1).join('.')}</span>
@@ -159,6 +164,7 @@ function nodo(o,p){const lv=p.length-1,ps=p.join('.');
 <button class="mv" data-a="mov" aria-label="Mover">↕</button><button class="x" data-a="del" aria-label="Eliminar">✕</button></div>
 ${fotosHTML(o)}
 ${videoHTML(o)}
+${notaHTML(o)}
 ${o.hijos.map((h,i)=>nodo(h,[...p,i])).join('')}
 ${lv<2?`<button class="add" data-a="add">+ ${NIV[lv+1]}</button>`:''}</div>`}
 const tieneF=o=>o.fotos.length>0;
@@ -174,8 +180,8 @@ function slot(o,k){const f=o.fotos[k];
 <div class="rot${f?'':' pend'}"></div></div>`}
 
 function render(focusPath){
- L.innerHTML=D.partes.length?D.partes.map((o,i)=>nodo(o,[i])).join(''):'<div class="vacio">Comienza con “+ Parte”. Cada elemento admite hasta 4 fotos.</div>';
- rotulos();cargarImgs(L);
+ L.innerHTML=D.partes.length?D.partes.map((o,i)=>nodo(o,[i])).join(''):'<div class="vacio">Comienza con “+ Parte”. Cada elemento admite 4 fotos (más 8 adicionales), un video y una nota.</div>';
+ rotulos();cargarImgs(L);L.querySelectorAll('textarea.nota').forEach(ajustarNota);
  if(focusPath!=null){const el=L.querySelector(`[data-p="${focusPath}"]>.row input`);if(el){el.focus({preventScroll:true});el.scrollIntoView({block:'center',behavior:'smooth'})}}
 }
 function refrescarFotos(n,o){n.querySelectorAll(':scope>.fotos,:scope>.ftog').forEach(e=>e.remove());
@@ -184,7 +190,7 @@ function rotulos(){L.querySelectorAll('.n').forEach(n=>{const p=P(n.dataset.p),r
  let o={hijos:D.partes};const falta=p.some(i=>!(o=o.hijos[i]).nombre.trim());
  n.querySelectorAll(':scope>.fotos>.slot').forEach(sl=>{const k=+sl.dataset.k,rt=sl.querySelector('.rot'),b=sl.querySelector('.bdg');
   if(b){b.textContent=num+' · Foto '+(k+1);rt.textContent=falta?'⚠ Falta nombre: '+r:r;rt.classList.toggle('warn',falta)}
-  else rt.textContent=k===0?'Foto 1 pendiente':'Foto '+(k+1)+' (opcional, máx. '+MAXF+')'});
+  else rt.textContent=k===0?'Foto 1 pendiente':k<MAXF_BASE?'Foto '+(k+1)+' (opcional)':'Foto adicional '+(k+1)+' (máx. '+MAXF+')'});
   const v=n.querySelector(':scope>.vid');if(v){v.querySelector('.bdg').textContent=num+' · Video';const rt=v.querySelector('.rot');rt.textContent=falta?'⚠ Falta nombre: '+r:r;rt.classList.toggle('warn',falta)}})}
 function ver(n,k){const p=P(n.dataset.p),o=get(p),im=n.querySelector(`:scope>.fotos>.slot[data-k="${k}"] img`);if(!im)return;
  const nm=o.nombre.trim()||'(sin nombre)';
@@ -198,7 +204,7 @@ function cargarImgs(root){if(!root)return;root.querySelectorAll('img[data-f]').f
 
 /* ===== Eventos (delegación) ===== */
 let rotT=0;
-L.addEventListener('input',e=>{const t=e.target;if(t.dataset.a!=='nom')return;get(P(t.closest('.n').dataset.p)).nombre=t.value;save();
+L.addEventListener('input',e=>{const t=e.target;if(t.dataset.a==='nota'){get(P(t.closest('.n').dataset.p)).nota=t.value;ajustarNota(t);save();return}if(t.dataset.a!=='nom')return;get(P(t.closest('.n').dataset.p)).nombre=t.value;save();
  clearTimeout(rotT);rotT=setTimeout(rotulos,120)});
 L.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.a==='nom')e.target.blur()});
 L.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b||b.tagName==='INPUT')return;
@@ -208,6 +214,7 @@ L.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b|
   if((o.nombre||nf||o.hijos.length)&&!confirm(`¿Eliminar ${NIV[p.length-1].toLowerCase()} "${o.nombre||'(sin nombre)'}"${o.hijos.length?' y todo su contenido':''}?`))return;
   const ids=fotosDe(o);padre(p).hijos.splice(p.at(-1),1);save();ids.forEach(soltarURL);render();fDel(ids).catch(()=>{})}
  else if(a==='ver'){ver(n,+b.closest('.slot').dataset.k)}
+ else if(a==='addNota'){b.outerHTML=`<textarea class="nota" data-a="nota" rows="2" placeholder="Escribe una nota u observación…"></textarea>`;n.querySelector(':scope>textarea.nota').focus()}
  else if(a==='req'){if(tieneF(o))return toast('Quita las fotos para desmarcar');o.req=!o.req;save();refrescarFotos(n,o)}
  else if(a==='cam'||a==='gal'){tgt={id:o.id,k:+b.closest('.slot').dataset.k};const inp=a==='cam'?cam:gal;inp.value='';inp.click()}
  else if(a==='mov'){abrirMov(o.id)}
@@ -310,7 +317,7 @@ const libs={};
 function cargar(src){return libs[src]||(libs[src]=new Promise((ok,ko)=>{const s=document.createElement('script');s.src=src;s.onload=ok;
  s.onerror=()=>{delete libs[src];s.remove();ko(new Error('No se pudo cargar '+src+' (¿sin conexión?)'))};document.head.appendChild(s)}))}
 function lista(){const r=[];const walk=(o,p)=>{const nm=o.nombre.trim()||'(sin nombre)';const num=p.map(i=>i+1).join('.');
- r.push({nivel:p.length-1,titulo:num+'. '+nm,ruta:ruta(p),fotos:o.fotos.slice(),video:o.video,p:p.slice()});o.hijos.forEach((h,i)=>walk(h,[...p,i]))};
+ r.push({nivel:p.length-1,titulo:num+'. '+nm,ruta:ruta(p),fotos:o.fotos.slice(),video:o.video,nota:(o.nota||'').trim(),p:p.slice()});o.hijos.forEach((h,i)=>walk(h,[...p,i]))};
  D.partes.forEach((o,i)=>walk(o,[i]));return r}
 const fname=e=>(((D.titulo||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w .()-]/g,'').replace(/\s+/g,' ').trim())||'Informe Registro Rapido')+'.'+e;
 const fecha=()=>new Date().toLocaleDateString('es-CL');
@@ -349,6 +356,9 @@ async function wordBlob(){await cargar('lib/docx.umd.js');
  for(const e of lista()){
   ch.push(new Paragraph({heading:H[e.nivel],keepNext:true,children:[new TextRun(e.titulo)],
    ...(e.nivel===0?{border:{bottom:{style:BorderStyle.SINGLE,size:6,color:AZUL,space:2}}}:{})}));
+  if(e.nota)ch.push(new Paragraph({keepNext:true,spacing:{before:60,after:160},indent:{left:200+e.nivel*280},shading:{type:ShadingType.CLEAR,color:'auto',fill:'FFF8E1'},
+   border:{left:{style:BorderStyle.SINGLE,size:24,color:'E08A00',space:8}},
+   children:[new TextRun({text:'Nota: ',bold:true,color:'8A5A00'}),...e.nota.split('\n').map((l,i)=>new TextRun(i?{text:l,break:1}:{text:l}))]}));
   const fs=await fotosInforme(e),vi=await videoInforme(e);
   if(fs.length){const uno=fs.length===1,colW=uno?ANCHO*0.6:ANCHO/2,maxPx=uno?380:300;
   const celdaTit=f=>new TableCell({width:{size:colW,type:WidthType.DXA},shading:{type:ShadingType.CLEAR,color:'auto',fill:AZUL},verticalAlign:VerticalAlign.CENTER,
@@ -410,6 +420,10 @@ async function pdfBlob(){await cargar('lib/jspdf.umd.min.js');
   ls.forEach(l=>{y+=fsz*.42;d.text(l,x,y)});y+=2;
   if(e.nivel===0){d.setDrawColor(11,61,110);d.setLineWidth(.3);d.line(M,y,M+AW,y)}
   y+=3;
+  if(e.nota){const bw=AW-e.nivel*5;d.setFont('helvetica','normal');d.setFontSize(9.5);const nls=d.splitTextToSize('Nota: '+e.nota,bw-7),nh=nls.length*4.2+3.5;nl(nh+2);
+   d.setFillColor(255,248,225);d.rect(x,y,bw,nh,'F');d.setDrawColor(224,138,0);d.setLineWidth(1);d.line(x+.5,y,x+.5,y+nh);d.setTextColor(70);
+   nls.forEach((l,j)=>{if(j===0){d.setFont('helvetica','bold');d.text('Nota:',x+4,y+4.6);d.setFont('helvetica','normal');d.text(l.replace(/^Nota:\s?/,''),x+4+d.getTextWidth('Nota: '),y+4.6)}else d.text(l,x+4,y+4.6+j*4.2)});
+   y+=nh+4}
   tablas.forEach((t,ti)=>{if(ti>0)nl(t.alto+4);d.setDrawColor(159,179,204);d.setLineWidth(.3);
    t.g.forEach((f,i)=>{const cx=t.tx+i*cw;
     d.setFillColor(11,61,110);d.rect(cx,y,cw,t.th,'FD');
@@ -572,6 +586,8 @@ async function importar(file){
  for(const r of dp.parseFromString(rx,'application/xml').getElementsByTagName('Relationship'))rels[r.getAttribute('Id')]=r.getAttribute('Target');
  const N={titulo:'',partes:[]},pila=[];let actual=null,nf=0,nv=0;
  const texto=p=>[...p.getElementsByTagName('w:t')].map(t=>t.textContent).join('').trim();
+ const textoBr=p=>{let r='';for(const n of p.getElementsByTagName('*')){if(n.tagName==='w:t')r+=n.textContent;else if(n.tagName==='w:br')r+='\n'}return r.trim()};
+ const enTabla=p=>{for(let n=p.parentNode;n;n=n.parentNode)if(n.tagName==='w:tc')return true;return false};
  for(const p of doc.getElementsByTagName('w:p')){
   const st=p.getElementsByTagName('w:pStyle')[0],sv=st?st.getAttribute('w:val'):'';
   if(sv==='Title'){if(!N.titulo)N.titulo=texto(p);continue}
@@ -581,6 +597,7 @@ async function importar(file){
    if(lv&&!padreL){padreL=nuevo();if(lv>1&&pila[0])pila[0].hijos.push(padreL);else N.partes.push(padreL);pila[lv-1]=padreL}
    (padreL?padreL.hijos:N.partes).push(o);pila[lv]=o;actual=o;continue}
   if(!actual)continue;
+  if(!enTabla(p)&&!p.getElementsByTagName('w:drawing').length){const tx=textoBr(p);if(/^Nota:/.test(tx)){actual.nota=tx.replace(/^Nota:\s*/,'');continue}}
   for(const dr of p.getElementsByTagName('w:drawing')){
    const pr=dr.getElementsByTagName('wp:docPr')[0],bl=dr.getElementsByTagName('a:blip')[0];if(!pr||!bl)continue;
    if(/^Video/i.test(pr.getAttribute('name')||'')||actual.fotos.length>=MAXF)continue; // las miniaturas de video se regeneran desde el video
