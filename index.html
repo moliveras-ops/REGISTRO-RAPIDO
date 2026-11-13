@@ -454,7 +454,8 @@ function fbInit(){return fbP||(fbP=(async()=>{
   const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app),S=st.getStorage(app);S.maxUploadRetryTime=60000;S.maxOperationRetryTime=60000;
   FB={onUser:cb=>au.onAuthStateChanged(A,cb),login:()=>au.signInWithPopup(A,new au.GoogleAuthProvider()),logout:()=>au.signOut(A),
    put:(path,blob,onp)=>new Promise((ok,ko)=>{const t=st.uploadBytesResumable(st.ref(S,path),blob,{contentType:blob.type||'application/octet-stream'});
-    t.on('state_changed',x=>onp&&onp(x.bytesTransferred),ko,()=>ok())}),
+    let ult=Date.now(),fin=false;const w=setInterval(()=>{if(!fin&&Date.now()-ult>40000){fin=true;clearInterval(w);t.cancel();ko({code:'storage/stalled'})}},2000);
+    t.on('state_changed',x=>{ult=Date.now();onp&&onp(x.bytesTransferred)},e=>{clearInterval(w);if(!fin){fin=true;ko(e)}},()=>{clearInterval(w);if(!fin){fin=true;ok()}})}),
    getBlob:path=>st.getBlob(st.ref(S,path)),
    setDoc:(path,data)=>fs.setDoc(fs.doc(F,path),{...data,actualizado:fs.serverTimestamp()}),
    getDoc:async path=>{const d=await fs.getDoc(fs.doc(F,path));return d.exists()?d.data():null},
@@ -485,6 +486,10 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
   const ids=mediaIds(),sub=subidos(),media={};let nv=0;
   const ents=[];for(const id of ids){const v=await fGet(id);if(v)ents.push([id,v])}
   const nuevos=ents.filter(([id])=>!sub.has(id));
+  if(nuevos.length){ // primero guarda los textos y lo ya subido, por si las fotos fallan
+   const m0={};for(const [id,v] of ents)if(sub.has(id))m0[id]=await serial(v,'users/'+u+'/media/'+id,false);
+   estadoNube('Guardando textos…','sync');
+   await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(m0),nFotos:Object.keys(m0).length,nVideos:0,parcial:true})}
   prog=nuevos.length?{hecho:0,tot:nuevos.reduce((a,[,v])=>a+bytesDe(v),0),i:0,n:nuevos.length,pct:-1}:null;
   if(prog)avance(0);
   for(const [id,v] of ents){const nuevoArch=!sub.has(id);if(nuevoArch){prog.i++;prog.pct=-1;avance(0)}
@@ -496,7 +501,7 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
   estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}),'ok');if(manual)toast('Respaldo completo ☁️');return true}
  catch(e){console.error(e);estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
  finally{prog=null;nubePct.textContent='';bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
-function errNube(e){const c=(e&&e.code)||'';if(/retry-limit/.test(c))return 'la subida no avanza: revisa la señal o que Storage esté activo en Firebase (plan Blaze y reglas)';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
+function errNube(e){const c=(e&&e.code)||'';if(/stalled/.test(c))return 'Firebase Storage no responde (los textos sí se guardaron). Activa Storage en la consola de Firebase (requiere plan Blaze) y revisa sus reglas';if(/retry-limit/.test(c))return 'la subida no avanza: revisa la señal o que Storage esté activo en Firebase (plan Blaze y reglas)';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
  if(/popup-closed|cancelled-popup/.test(c))return 'ventana cerrada';if(/popup-blocked/.test(c))return 'ventana bloqueada por el navegador';
  if(/unauthorized-domain/.test(c))return 'dominio no autorizado en Firebase';if(/network|unavailable/.test(c))return 'sin conexión';
  if(/quota|billing|project-not-found|bucket/i.test(c+' '+(e.message||'')))return 'Storage no habilitado (requiere plan Blaze)';return (e&&e.message)||'error'}
