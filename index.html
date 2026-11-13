@@ -27,8 +27,9 @@ button.x{background:#c62828}button.g{background:#2e7d32}button.add{background:#2
 .box img{width:100%;height:100%;object-fit:cover;display:block}
 .box button{font-size:13px;padding:9px 4px;background:#e8eef6;color:#0b3d6e}
 .box .del{position:absolute;top:4px;right:4px;background:#c62828;color:#fff;border-radius:50%;width:28px;height:28px;padding:0;font-size:17px;line-height:28px}
-.ftog{background:#e8eef6;color:#0b3d6e;font-size:13px;padding:8px 12px;margin:6px 0 2px}
-.ftog.off{background:none;color:#667;padding:4px 2px;margin:0;font-size:12px;text-decoration:underline}
+.ftog{background:#889;font-size:13px;padding:8px 12px;margin:6px 0 2px}
+.ftog.on{background:#2e7d32}
+#pend{font-size:13px;color:#ffd54f;font-weight:500}
 .rot{font-size:11px;color:#445;margin-top:3px;line-height:1.25;word-break:break-word}
 .rot b{color:#0b3d6e}
 #bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:8px;padding-bottom:max(8px,env(safe-area-inset-bottom));display:flex;gap:8px;box-shadow:0 -2px 6px #0002;z-index:5}
@@ -38,7 +39,7 @@ button.x{background:#c62828}button.g{background:#2e7d32}button.add{background:#2
 #msg{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#222;color:#fff;padding:9px 14px;border-radius:20px;font-size:14px;display:none;z-index:9;max-width:90%;text-align:center}
 .vacio{color:#667;text-align:center;padding:16px 8px;font-size:14px}
 </style></head><body>
-<header><span>Registro Rápido</span><button class="x" id="btnNuevo">Nuevo</button></header>
+<header><span>Registro Rápido <small id="pend"></small></span><button class="x" id="btnNuevo">Nuevo</button></header>
 <main>
 <input id="tit" placeholder="Título del informe" autocomplete="off">
 <div id="L"></div>
@@ -55,9 +56,11 @@ const KEY='rr3';
 const NIV=['Parte','Componente','Subparte'],CL=['','c','s'];
 let D={titulo:'',partes:[]};
 try{D=JSON.parse(localStorage.getItem(KEY))||D}catch(e){}
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){toast('No se pudo guardar')}};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){toast('No se pudo guardar')}updPend()};
+function pendientes(){let n=0;const w=o=>{if(o.req)n+=o.fotos.filter(f=>!f).length;o.hijos.forEach(w)};D.partes.forEach(w);return n}
+function updPend(){const n=pendientes();pend.textContent=n?n+' foto(s) pendiente(s)':''}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
-const nuevo=()=>({id:uid(),nombre:'',fotos:[null,null],hijos:[]});
+const nuevo=()=>({id:uid(),nombre:'',req:false,fotos:[null,null],hijos:[]});
 
 let dbP=null;
 function db(){return dbP||(dbP=new Promise((ok,ko)=>{const r=indexedDB.open('registro-rapido',1);
@@ -91,9 +94,8 @@ ${fotosHTML(o)}
 ${o.hijos.map((h,i)=>nodo(h,[...p,i])).join('')}
 ${lv<2?`<button class="add" data-a="add">+ ${NIV[lv+1]}</button>`:''}</div>`}
 const tieneF=o=>o.fotos.some(Boolean);
-function fotosHTML(o){
- if(!o.conFoto&&!tieneF(o))return `<div class="fotos"><button class="ftog" data-a="onF">📷 Agregar fotos</button></div>`;
- return `<div class="fotos">${[0,1].map(k=>slot(o,k)).join('')}</div>${tieneF(o)?'':'<button class="ftog off" data-a="offF">Sin fotos</button>'}`}
+function fotosHTML(o){const on=o.req||tieneF(o);
+ return `<button class="ftog${on?' on':''}" data-a="req">📷 ${on?'Requiere fotos ✓':'Requiere fotos'}</button>${on?`<div class="fotos">${[0,1].map(k=>slot(o,k)).join('')}</div>`:''}`}
 function slot(o,k){const f=o.fotos[k];
  return `<div class="slot" data-k="${k}">${f?`<div class="box on"><img data-f="${f}" alt="Foto ${k+1}"><button class="del" data-a="delF" aria-label="Quitar foto">×</button></div>`
  :`<div class="box"><button data-a="cam">📷 Cámara</button><button data-a="gal">🖼️ Galería</button></div>`}
@@ -120,10 +122,10 @@ L.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b|
  else if(a==='del'){const nf=fotosDe(o).length;
   if((o.nombre||nf||o.hijos.length)&&!confirm(`¿Eliminar ${NIV[p.length-1].toLowerCase()} "${o.nombre||'(sin nombre)'}"${o.hijos.length?' y todo su contenido':''}?`))return;
   const ids=fotosDe(o);padre(p).hijos.splice(p.at(-1),1);save();ids.forEach(soltarURL);render();fDel(ids).catch(()=>{})}
- else if(a==='onF'||a==='offF'){o.conFoto=a==='onF';save();refrescarFotos(n,o)}
+ else if(a==='req'){if(tieneF(o))return toast('Quita las fotos para desmarcar');o.req=!o.req;save();refrescarFotos(n,o)}
  else if(a==='cam'||a==='gal'){tgt={id:o.id,k:+b.closest('.slot').dataset.k};const inp=a==='cam'?cam:gal;inp.value='';inp.click()}
  else if(a==='delF'){const k=+b.closest('.slot').dataset.k,id=o.fotos[k];o.fotos[k]=null;save();soltarURL(id);
-  o.conFoto=true;refrescarFotos(n,o);fDel([id]).catch(()=>{})}
+  o.req=true;save();refrescarFotos(n,o);fDel([id]).catch(()=>{})}
 });
 addP.onclick=()=>{D.partes.push(nuevo());save();render(String(D.partes.length-1))};
 tit.value=D.titulo||'';tit.oninput=()=>{D.titulo=tit.value;save()};
@@ -164,6 +166,7 @@ const fecha=()=>new Date().toLocaleDateString('es-CL');
 function bajar(b,n){const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=n;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
 let ocupado=false;
 async function generar(tipo,fn){if(ocupado)return;if(!D.partes.length)return toast('Agrega al menos una Parte');
+ const np=pendientes();if(np&&!confirm('Faltan '+np+' foto(s) marcadas como requeridas. ¿Generar igual?'))return;
  ocupado=true;toast('Generando '+tipo+'…',0);
  try{await fn();toast(tipo+' listo')}catch(e){console.error(e);toast('Error: '+e.message,4000)}finally{ocupado=false}}
 
@@ -201,12 +204,12 @@ btnWord.onclick=()=>generar('Word',word);btnPdf.onclick=()=>generar('PDF',pdf);
 
 /* ===== Migración desde la versión anterior (fotos en base64 dentro de localStorage) ===== */
 async function migrar(){const old=localStorage.getItem('rr2');if(!old||localStorage.getItem(KEY))return false;
- try{const O=JSON.parse(old);const conv=async o=>{const n=nuevo();n.nombre=o.nombre||'';
+ try{const O=JSON.parse(old);const conv=async o=>{const n=nuevo();n.nombre=o.nombre||'';n.req=!!o.req;
    for(let k=0;k<2;k++){const f=(o.fotos||[])[k];if(f&&f.src){const blob=await (await fetch(f.src)).blob();const id=uid();await fPut(id,{blob,w:f.w,h:f.h});n.fotos[k]=id}}
    for(const h of o.hijos||[])n.hijos.push(await conv(h));return n};
   D={titulo:O.titulo||'',partes:[]};for(const p of O.partes||[])D.partes.push(await conv(p));save();localStorage.removeItem('rr2');return true}
  catch(e){console.error(e);return false}}
 migrar().then(m=>{if(m){tit.value=D.titulo;render();toast('Datos anteriores recuperados')}});
-render();
+render();updPend();
 if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
