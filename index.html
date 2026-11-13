@@ -447,17 +447,23 @@ const firebaseConfig = {
   appId: "1:587487740967:web:5ba718a852a846424fba02"
 };
 var FB=null,fbP=null,usuario=null,bkOcupado=false,bkOtra=false,bkT=0,nubeEstado='',nubeLista=null;
+const conTiempo=(p,ms)=>Promise.race([p,new Promise((_,ko)=>setTimeout(()=>ko({code:'nube/stalled'}),ms))]);
+const LIM_NUBE=25*1048576; // archivos más grandes (videos largos) quedan solo en el teléfono
 function fbInit(){return fbP||(fbP=(async()=>{
  if(window.__FB_MOCK){FB=window.__FB_MOCK}else{
   const B='https://www.gstatic.com/firebasejs/11.10.0/';
-  const [ap,au,fs,st]=await Promise.all(['firebase-app','firebase-auth','firebase-firestore','firebase-storage'].map(m=>import(B+m+'.js')));
-  const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app),S=st.getStorage(app);S.maxUploadRetryTime=60000;S.maxOperationRetryTime=60000;
+  const [ap,au,fs]=await Promise.all(['firebase-app','firebase-auth','firebase-firestore'].map(m=>import(B+m+'.js')));
+  const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app);
+  // Archivos (fotos/videos) guardados en Firestore en trozos de 900 KB: funciona con el plan gratis, sin Storage
+  const CH=900000,clave=path=>{const m=path.match(/^users\/([^/]+)\/media\/(.+)$/);return{col:'users/'+m[1]+'/blobs',k:m[2].replace(/\//g,'~')}};
   FB={onUser:cb=>au.onAuthStateChanged(A,cb),login:()=>au.signInWithPopup(A,new au.GoogleAuthProvider()),logout:()=>au.signOut(A),
-   put:(path,blob,onp)=>new Promise((ok,ko)=>{const t=st.uploadBytesResumable(st.ref(S,path),blob,{contentType:blob.type||'application/octet-stream'});
-    let ult=Date.now(),fin=false;const w=setInterval(()=>{if(!fin&&Date.now()-ult>40000){fin=true;clearInterval(w);t.cancel();ko({code:'storage/stalled'})}},2000);
-    t.on('state_changed',x=>{ult=Date.now();onp&&onp(x.bytesTransferred)},e=>{clearInterval(w);if(!fin){fin=true;ko(e)}},()=>{clearInterval(w);if(!fin){fin=true;ok()}})}),
-   getBlob:path=>st.getBlob(st.ref(S,path)),
-   setDoc:(path,data)=>fs.setDoc(fs.doc(F,path),{...data,actualizado:fs.serverTimestamp()}),
+   put:async(path,blob,onp)=>{const {col,k}=clave(path),buf=new Uint8Array(await blob.arrayBuffer()),n=Math.max(1,Math.ceil(buf.length/CH));
+    for(let i=0;i<n;i++){const fin=Math.min(buf.length,(i+1)*CH);
+     await conTiempo(fs.setDoc(fs.doc(F,col+'/'+k+'~'+i),{d:fs.Bytes.fromUint8Array(buf.slice(i*CH,fin)),i,n,t:blob.type||''}),60000);onp&&onp(fin)}},
+   getBlob:async path=>{const {col,k}=clave(path);const d0=await fs.getDoc(fs.doc(F,col+'/'+k+'~0'));if(!d0.exists())throw new Error('archivo no encontrado en la nube');
+    const x=d0.data(),parts=[x.d.toUint8Array()];for(let i=1;i<x.n;i++){const di=await fs.getDoc(fs.doc(F,col+'/'+k+'~'+i));parts.push(di.data().d.toUint8Array())}
+    return new Blob(parts,{type:x.t||''})},
+   setDoc:(path,data)=>conTiempo(fs.setDoc(fs.doc(F,path),{...data,actualizado:fs.serverTimestamp()}),60000),
    getDoc:async path=>{const d=await fs.getDoc(fs.doc(F,path));return d.exists()?d.data():null},
    list:async path=>{const r=await fs.getDocs(fs.query(fs.collection(F,path),fs.orderBy('actualizado','desc'),fs.limit(50)));
     return r.docs.map(d=>{const x=d.data();return{id:d.id,titulo:x.titulo,nFotos:x.nFotos,nVideos:x.nVideos,fecha:x.actualizado&&x.actualizado.toDate?x.actualizado.toDate():null}})}}}
@@ -484,7 +490,7 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
  if(bkOcupado){bkOtra=true;return false}bkOcupado=true;clearTimeout(bkT);
  try{const u=usuario.uid;if(!D.rid){D.rid=uid();save(true)}
   const ids=mediaIds(),sub=subidos(),media={};let nv=0;
-  const ents=[];for(const id of ids){const v=await fGet(id);if(v)ents.push([id,v])}
+  const ents=[];let grandes=0;for(const id of ids){const v=await fGet(id);if(!v)continue;if(bytesDe(v)>LIM_NUBE){grandes++;continue}ents.push([id,v])}
   const nuevos=ents.filter(([id])=>!sub.has(id));
   if(nuevos.length){ // primero guarda los textos y lo ya subido, por si las fotos fallan
    const m0={};for(const [id,v] of ents)if(sub.has(id))m0[id]=await serial(v,'users/'+u+'/media/'+id,false);
@@ -498,13 +504,15 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
   if(prog){prog=null;estadoNube('Guardando registro…','sync')}
   await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(media),nFotos:ids.length-nv,nVideos:nv});
   localStorage.setItem('rr_bk',String(Date.now()));nubeLista=null;
-  estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}),'ok');if(manual)toast('Respaldo completo ☁️');return true}
+  estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})+(grandes?' · '+grandes+' video(s) de más de 25 MB quedan solo en el teléfono':''),'ok');if(manual)toast('Respaldo completo ☁️');return true}
  catch(e){console.error(e);prog=null;estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
  finally{prog=null;nubePct.textContent='';bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
-function errNube(e){const c=(e&&e.code)||'';if(/stalled/.test(c))return 'Firebase Storage no responde (los textos sí se guardaron). Activa Storage en la consola de Firebase (requiere plan Blaze) y revisa sus reglas';if(/retry-limit/.test(c))return 'la subida no avanza: revisa la señal o que Storage esté activo en Firebase (plan Blaze y reglas)';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
+function errNube(e){const c=(e&&e.code)||'';
+ if(/stalled/.test(c))return 'la nube no responde: revisa la señal y que Firestore esté creado con sus reglas';
+ if(/permission|unauthorized/.test(c))return 'sin permiso: revisa las reglas de Firestore (deben decir /users/{uid})';
  if(/popup-closed|cancelled-popup/.test(c))return 'ventana cerrada';if(/popup-blocked/.test(c))return 'ventana bloqueada por el navegador';
  if(/unauthorized-domain/.test(c))return 'dominio no autorizado en Firebase';if(/network|unavailable/.test(c))return 'sin conexión';
- if(/quota|billing|project-not-found|bucket/i.test(c+' '+(e.message||'')))return 'Storage no habilitado (requiere plan Blaze)';return (e&&e.message)||'error'}
+ if(/resource-exhausted|quota/.test(c))return 'se alcanzó el límite gratis de Firebase por hoy';return (e&&e.message)||'error'}
 async function restaurar(rid){const u=usuario.uid;const doc=await FB.getDoc('users/'+u+'/registros/'+rid);if(!doc)return toast('Registro no encontrado');
  const vacio=!D.partes.length&&!(D.titulo||'').trim();
  if(!vacio&&!confirm('Se reemplazará el registro actual en pantalla por "'+(doc.titulo||'Sin título')+'". El actual queda respaldado en la nube. ¿Continuar?'))return;
