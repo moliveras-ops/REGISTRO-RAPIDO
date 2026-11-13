@@ -1,6 +1,6 @@
 // Registro Rápido: funciona sin conexión. Página: red primero (para recibir actualizaciones); librerías: caché primero.
-const C = 'rr-v8';
-const FILES = ['./', 'index.html', 'lib/docx.umd.js', 'lib/jspdf.umd.min.js'];
+const C = 'rr-v9';
+const FILES = ['./', 'index.html', 'lib/docx.umd.js', 'lib/jspdf.umd.min.js', 'lib/jszip.min.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim()));
