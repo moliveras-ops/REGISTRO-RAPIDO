@@ -583,7 +583,7 @@ async function importar(file){
   if(!actual)continue;
   for(const dr of p.getElementsByTagName('w:drawing')){
    const pr=dr.getElementsByTagName('wp:docPr')[0],bl=dr.getElementsByTagName('a:blip')[0];if(!pr||!bl)continue;
-   if(!/^Foto/i.test(pr.getAttribute('name')||'')||actual.fotos.length>=MAXF)continue; // las miniaturas de video se regeneran desde el video
+   if(/^Video/i.test(pr.getAttribute('name')||'')||actual.fotos.length>=MAXF)continue; // las miniaturas de video se regeneran desde el video
    const t=rels[bl.getAttribute('r:embed')];if(!t)continue;const f=docx.file('word/'+t.replace(/^\/?word\//,''))||docx.file(t.replace(/^\//,''));if(!f)continue;
    const blob=new Blob([await f.async('uint8array')],{type:'image/jpeg'});let w=0,h=0;
    try{const bm=await createImageBitmap(blob);w=bm.width;h=bm.height;bm.close()}catch(e){continue}
