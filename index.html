@@ -499,7 +499,7 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
   await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(media),nFotos:ids.length-nv,nVideos:nv});
   localStorage.setItem('rr_bk',String(Date.now()));nubeLista=null;
   estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}),'ok');if(manual)toast('Respaldo completo ☁️');return true}
- catch(e){console.error(e);estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
+ catch(e){console.error(e);prog=null;estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
  finally{prog=null;nubePct.textContent='';bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
 function errNube(e){const c=(e&&e.code)||'';if(/stalled/.test(c))return 'Firebase Storage no responde (los textos sí se guardaron). Activa Storage en la consola de Firebase (requiere plan Blaze) y revisa sus reglas';if(/retry-limit/.test(c))return 'la subida no avanza: revisa la señal o que Storage esté activo en Firebase (plan Blaze y reglas)';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
  if(/popup-closed|cancelled-popup/.test(c))return 'ventana cerrada';if(/popup-blocked/.test(c))return 'ventana bloqueada por el navegador';
