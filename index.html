@@ -27,6 +27,8 @@ button.x{background:#c62828}button.g{background:#2e7d32}button.add{background:#2
 .box img{width:100%;height:100%;object-fit:cover;display:block}
 .box button{font-size:13px;padding:9px 4px;background:#e8eef6;color:#0b3d6e}
 .box .del{position:absolute;top:4px;right:4px;background:#c62828;color:#fff;border-radius:50%;width:28px;height:28px;padding:0;font-size:17px;line-height:28px}
+.ftog{background:#e8eef6;color:#0b3d6e;font-size:13px;padding:8px 12px;margin:6px 0 2px}
+.ftog.off{background:none;color:#667;padding:4px 2px;margin:0;font-size:12px;text-decoration:underline}
 .rot{font-size:11px;color:#445;margin-top:3px;line-height:1.25;word-break:break-word}
 .rot b{color:#0b3d6e}
 #bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:8px;padding-bottom:max(8px,env(safe-area-inset-bottom));display:flex;gap:8px;box-shadow:0 -2px 6px #0002;z-index:5}
@@ -85,9 +87,13 @@ function nodo(o,p){const lv=p.length-1,ps=p.join('.');
 <div class="row"><span class="tag">${NIV[lv]} ${p.map(i=>i+1).join('.')}</span>
 <input value="${esc(o.nombre)}" placeholder="Nombre ${NIV[lv].toLowerCase()}" data-a="nom" enterkeyhint="done" autocomplete="off">
 <button class="x" data-a="del" aria-label="Eliminar">✕</button></div>
-<div class="fotos">${[0,1].map(k=>slot(o,k)).join('')}</div>
+${fotosHTML(o)}
 ${o.hijos.map((h,i)=>nodo(h,[...p,i])).join('')}
 ${lv<2?`<button class="add" data-a="add">+ ${NIV[lv+1]}</button>`:''}</div>`}
+const tieneF=o=>o.fotos.some(Boolean);
+function fotosHTML(o){
+ if(!o.conFoto&&!tieneF(o))return `<div class="fotos"><button class="ftog" data-a="onF">📷 Agregar fotos</button></div>`;
+ return `<div class="fotos">${[0,1].map(k=>slot(o,k)).join('')}</div>${tieneF(o)?'':'<button class="ftog off" data-a="offF">Sin fotos</button>'}`}
 function slot(o,k){const f=o.fotos[k];
  return `<div class="slot" data-k="${k}">${f?`<div class="box on"><img data-f="${f}" alt="Foto ${k+1}"><button class="del" data-a="delF" aria-label="Quitar foto">×</button></div>`
  :`<div class="box"><button data-a="cam">📷 Cámara</button><button data-a="gal">🖼️ Galería</button></div>`}
@@ -98,6 +104,8 @@ function render(focusPath){
  rotulos();cargarImgs(L);
  if(focusPath!=null){const el=L.querySelector(`[data-p="${focusPath}"]>.row input`);if(el){el.focus({preventScroll:true});el.scrollIntoView({block:'center',behavior:'smooth'})}}
 }
+function refrescarFotos(n,o){n.querySelectorAll(':scope>.fotos,:scope>.ftog').forEach(e=>e.remove());
+ n.querySelector(':scope>.row').insertAdjacentHTML('afterend',fotosHTML(o));rotulos();cargarImgs(n.querySelector(':scope>.fotos'))}
 function rotulos(){L.querySelectorAll('.n').forEach(n=>{const r=ruta(P(n.dataset.p));n.querySelectorAll(':scope>.fotos .rot span').forEach(s=>s.textContent=r)})}
 function cargarImgs(root){root.querySelectorAll('img[data-f]').forEach(async im=>{const u=await urlDe(im.dataset.f);if(u)im.src=u;else im.alt='(foto no disponible)'})}
 
@@ -112,9 +120,10 @@ L.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b|
  else if(a==='del'){const nf=fotosDe(o).length;
   if((o.nombre||nf||o.hijos.length)&&!confirm(`¿Eliminar ${NIV[p.length-1].toLowerCase()} "${o.nombre||'(sin nombre)'}"${o.hijos.length?' y todo su contenido':''}?`))return;
   const ids=fotosDe(o);padre(p).hijos.splice(p.at(-1),1);save();ids.forEach(soltarURL);render();fDel(ids).catch(()=>{})}
+ else if(a==='onF'||a==='offF'){o.conFoto=a==='onF';save();refrescarFotos(n,o)}
  else if(a==='cam'||a==='gal'){tgt={id:o.id,k:+b.closest('.slot').dataset.k};const inp=a==='cam'?cam:gal;inp.value='';inp.click()}
  else if(a==='delF'){const k=+b.closest('.slot').dataset.k,id=o.fotos[k];o.fotos[k]=null;save();soltarURL(id);
-  b.closest('.slot').outerHTML=slot(o,k);rotulos();fDel([id]).catch(()=>{})}
+  o.conFoto=true;refrescarFotos(n,o);fDel([id]).catch(()=>{})}
 });
 addP.onclick=()=>{D.partes.push(nuevo());save();render(String(D.partes.length-1))};
 tit.value=D.titulo||'';tit.oninput=()=>{D.titulo=tit.value;save()};
@@ -137,8 +146,7 @@ async function alElegir(inp){const f=inp.files[0],t=tgt;tgt=null;if(!f||!t)retur
  try{const v=await procesar(f),id=uid();await fPut(id,v);
   const p2=buscarId(t.id);if(!p2){await fDel([id]);return}const o=get(p2),old=o.fotos[t.k];o.fotos[t.k]=id;save();
   if(old){soltarURL(old);fDel([old]).catch(()=>{})}
-  const el=L.querySelector(`[data-p="${p2.join('.')}"]>.fotos>.slot[data-k="${t.k}"]`);
-  if(el){el.outerHTML=slot(o,t.k);rotulos();cargarImgs(L.querySelector(`[data-p="${p2.join('.')}"]>.fotos`))}
+  const el=L.querySelector(`[data-p="${p2.join('.')}"]`);if(el)refrescarFotos(el,o);
   toast('Foto guardada')}
  catch(e){toast('Error con la foto: '+e.message)}}
 cam.onchange=()=>alElegir(cam);gal.onchange=()=>alElegir(gal);
