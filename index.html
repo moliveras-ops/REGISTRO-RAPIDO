@@ -1,1 +1,52 @@
-
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Registro Rápido</title>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+<style>
+body{font-family:sans-serif;margin:0;background:#f2f4f7}header{background:#0b3d6e;color:#fff;padding:12px;font-size:20px}
+main{padding:10px}.card{background:#fff;border-radius:8px;padding:10px;margin:8px 0;box-shadow:0 1px 3px #0002}
+.comp{margin-left:14px;border-left:3px solid #0b3d6e;padding-left:8px}button{padding:8px 10px;margin:3px;border:0;border-radius:6px;background:#0b3d6e;color:#fff}
+button.del{background:#b00}input,textarea{width:100%;padding:6px;margin:3px 0;box-sizing:border-box}img{width:90px;height:90px;object-fit:cover;margin:3px;border-radius:4px}
+</style></head><body>
+<header>Registro Rápido</header><main>
+<div class="card"><input id="titulo" placeholder="Título del informe"><input id="np" placeholder="Nombre de la nueva parte">
+<button onclick="addParte()">+ Parte</button><button onclick="genWord()">Generar informe Word</button></div>
+<div id="lista"></div></main>
+<script>
+let D=JSON.parse(localStorage.getItem('rr')||'{"titulo":"","partes":[]}');
+const save=()=>localStorage.setItem('rr',JSON.stringify(D));
+titulo.value=D.titulo;titulo.oninput=()=>{D.titulo=titulo.value;save()};
+function addParte(){if(!np.value)return;D.partes.push({nombre:np.value,comps:[]});np.value='';save();render()}
+function addComp(i){const n=prompt('Nombre del componente / subcomponente');if(n){D.partes[i].comps.push({nombre:n,obs:'',fotos:[]});save();render()}}
+function delP(i){if(confirm('¿Eliminar parte?')){D.partes.splice(i,1);save();render()}}
+function delC(i,j){if(confirm('¿Eliminar componente?')){D.partes[i].comps.splice(j,1);save();render()}}
+function G(i,j,s){const c=D.partes[i].comps[j];return s==null?c:c.subs[s]}
+function addSub(i,j){const n=prompt('Nombre del subcomponente');if(n){const c=D.partes[i].comps[j];(c.subs=c.subs||[]).push({nombre:n,obs:'',fotos:[]});save();render()}}
+function delS(i,j,s){if(confirm('¿Eliminar subcomponente?')){D.partes[i].comps[j].subs.splice(s,1);save();render()}}
+function delF(i,j,k,s){G(i,j,s).fotos.splice(k,1);save();render()}
+function foto(i,j,inp,s){[...inp.files].forEach(f=>{const r=new FileReader();r.onload=e=>{const im=new Image();im.onload=()=>{
+const c=document.createElement('canvas'),s=Math.min(1,1200/Math.max(im.width,im.height));c.width=im.width*s;c.height=im.height*s;
+c.getContext('2d').drawImage(im,0,0,c.width,c.height);G(i,j,s).fotos.push({src:c.toDataURL('image/jpeg',.75),w:c.width,h:c.height,txt:''});save();render()};im.src=e.target.result};r.readAsDataURL(f)})}
+function blk(i,j,s,c){const a=s==null?`${i},${j},null`:`${i},${j},${s}`;
+return `<textarea placeholder="Observaciones" oninput="G(${a}).obs=this.value;save()">${c.obs}</textarea>
+<button onclick="this.nextElementSibling.click()">Agregar foto</button><input type="file" accept="image/*" multiple hidden onchange="foto(${i},${j},this,${s==null?'null':s})"><br>
+${c.fotos.map((f,k)=>`<img src="${f.src}" onclick="if(confirm('¿Borrar foto?'))delF(${i},${j},${k},${s==null?'null':s})">`).join('')}`}
+function render(){lista.innerHTML=D.partes.map((p,i)=>`<div class="card"><b>${p.nombre}</b>
+<button onclick="addComp(${i})">+ Componente</button><button class="del" onclick="delP(${i})">X</button>
+${p.comps.map((c,j)=>`<div class="comp"><b>${c.nombre}</b><button onclick="addSub(${i},${j})">+ Subcomponente</button><button class="del" onclick="delC(${i},${j})">X</button>
+${blk(i,j,null,c)}
+${(c.subs||[]).map((u,s)=>`<div class="comp"><b>${u.nombre}</b><button class="del" onclick="delS(${i},${j},${s})">X</button>${blk(i,j,s,u)}</div>`).join('')}
+</div>`).join('')}</div>`).join('')}
+render();
+async function genWord(){const {Document,Packer,Paragraph,TextRun,ImageRun,HeadingLevel}=docx;const ch=[];
+ch.push(new Paragraph({text:D.titulo||'Informe',heading:HeadingLevel.TITLE}));
+ch.push(new Paragraph('Fecha: '+new Date().toLocaleDateString('es-CL')));
+D.partes.forEach((p,i)=>{ch.push(new Paragraph({text:(i+1)+'. '+p.nombre,heading:HeadingLevel.HEADING_1}));
+p.comps.forEach((c,j)=>{ch.push(new Paragraph({text:(i+1)+'.'+(j+1)+' '+c.nombre,heading:HeadingLevel.HEADING_2}));
+const pf=(x,t)=>{if(x.obs)ch.push(new Paragraph(x.obs));x.fotos.forEach((f,k)=>{const w=400,hh=Math.round(f.h*w/f.w);
+ch.push(new Paragraph({children:[new ImageRun({data:Uint8Array.from(atob(f.src.split(',')[1]),z=>z.charCodeAt(0)),transformation:{width:w,height:hh}})]}));
+ch.push(new Paragraph({children:[new TextRun({text:'Foto '+(k+1)+': '+t,italics:true})]}))})};
+pf(c,c.nombre);(c.subs||[]).forEach((u,s)=>{ch.push(new Paragraph({text:(i+1)+'.'+(j+1)+'.'+(s+1)+' '+u.nombre,heading:HeadingLevel.HEADING_3}));pf(u,u.nombre)})})});
+const b=await Packer.toBlob(new Document({sections:[{children:ch}]}));const a=document.createElement('a');
+a.href=URL.createObjectURL(b);a.download=(D.titulo||'Informe')+'.docx';a.click()}
+</script></body></html>
