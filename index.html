@@ -455,7 +455,7 @@ function fbInit(){return fbP||(fbP=(async()=>{
   const [ap,au,fs]=await Promise.all(['firebase-app','firebase-auth','firebase-firestore'].map(m=>import(B+m+'.js')));
   const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app);
   // Archivos (fotos/videos) guardados en Firestore en trozos de 900 KB: funciona con el plan gratis, sin Storage
-  const CH=900000,clave=path=>{const m=path.match(/^users\/([^/]+)\/media\/(.+)$/);return{col:'users/'+m[1]+'/blobs',k:m[2].replace(/\//g,'~')}};
+  const CH=900000,clave=path=>{const m=path.match(/^([^/]+)\/([^/]+)\/media\/(.+)$/);return{col:m[1]+'/'+m[2]+'/blobs',k:m[3].replace(/\//g,'~')}};
   FB={onUser:cb=>au.onAuthStateChanged(A,cb),login:()=>au.signInWithPopup(A,new au.GoogleAuthProvider()),logout:()=>au.signOut(A),
    put:async(path,blob,onp)=>{const {col,k}=clave(path),buf=new Uint8Array(await blob.arrayBuffer()),n=Math.max(1,Math.ceil(buf.length/CH));
     for(let i=0;i<n;i++){const fin=Math.min(buf.length,(i+1)*CH);
@@ -469,7 +469,11 @@ function fbInit(){return fbP||(fbP=(async()=>{
     return r.docs.map(d=>{const x=d.data();return{id:d.id,titulo:x.titulo,nFotos:x.nFotos,nVideos:x.nVideos,fecha:x.actualizado&&x.actualizado.toDate?x.actualizado.toDate():null}})}}}
  FB.onUser(u=>{usuario=u;if(u){localStorage.setItem('rr_login','1');nubeEstado=nubeEstado||'';programarRespaldo(1500)}else{localStorage.removeItem('rr_login')}pintarNube()});
  return FB})().catch(e=>{fbP=null;throw e}))}
-const subKey=()=>'rr_sub_'+(usuario?usuario.uid:'');
+// carpeta raíz en Firestore: la que permitan las reglas del proyecto ('usuarios' o 'users')
+var RAIZ=localStorage.getItem('rr_raiz')||'usuarios';
+function otraRaiz(){RAIZ=RAIZ==='usuarios'?'users':'usuarios';try{localStorage.setItem('rr_raiz',RAIZ)}catch(e){}}
+const esPermiso=e=>/permission|unauthorized/.test((e&&e.code)||'');
+const subKey=()=>'rr_sub_'+RAIZ+'_'+(usuario?usuario.uid:'');
 function subidos(){try{return new Set(JSON.parse(localStorage.getItem(subKey())||'[]'))}catch(e){return new Set()}}
 function marcarSubido(s){try{localStorage.setItem(subKey(),JSON.stringify([...s]))}catch(e){}}
 function programarRespaldo(ms=15000){if(!usuario)return;clearTimeout(bkT);bkT=setTimeout(()=>respaldar(false),ms)}
@@ -484,7 +488,9 @@ async function serial(x,path,subir){if(x instanceof Blob){if(subir){await FB.put
  if(x&&typeof x==='object'&&!Array.isArray(x)){const o={};for(const k of Object.keys(x))o[k]=await serial(x[k],path+'/'+k,subir);return o}return x}
 async function deserial(x){if(x&&typeof x==='object'&&x.__b){const b=await FB.getBlob(x.__b);return x.t&&b.type!==x.t?new Blob([b],{type:x.t}):b}
  if(x&&typeof x==='object'&&!Array.isArray(x)){const o={};for(const k of Object.keys(x))o[k]=await deserial(x[k]);return o}return x}
-async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con Google');return false}
+async function respaldar(manual,rt){const r=await respaldar0(manual,rt);
+ if(r==='perm'){otraRaiz();return respaldar(manual,true)}return r===true}
+async function respaldar0(manual,rt){if(!usuario){if(manual)toast('Primero entra con Google');return false}
  if(!navigator.onLine){estadoNube('Sin conexión: se respaldará al volver la señal','warn');return false}
  if(!D.partes.length&&!(D.titulo||'').trim())return true;
  if(bkOcupado){bkOtra=true;return false}bkOcupado=true;clearTimeout(bkT);
@@ -493,27 +499,27 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
   const ents=[];let grandes=0;for(const id of ids){const v=await fGet(id);if(!v)continue;if(bytesDe(v)>LIM_NUBE){grandes++;continue}ents.push([id,v])}
   const nuevos=ents.filter(([id])=>!sub.has(id));
   if(nuevos.length){ // primero guarda los textos y lo ya subido, por si las fotos fallan
-   const m0={};for(const [id,v] of ents)if(sub.has(id))m0[id]=await serial(v,'users/'+u+'/media/'+id,false);
+   const m0={};for(const [id,v] of ents)if(sub.has(id))m0[id]=await serial(v,RAIZ+'/'+u+'/media/'+id,false);
    estadoNube('Guardando textos…','sync');
-   await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(m0),nFotos:Object.keys(m0).length,nVideos:0,parcial:true})}
+   await FB.setDoc(RAIZ+'/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(m0),nFotos:Object.keys(m0).length,nVideos:0,parcial:true})}
   prog=nuevos.length?{hecho:0,tot:nuevos.reduce((a,[,v])=>a+bytesDe(v),0),i:0,n:nuevos.length,pct:-1}:null;
   if(prog)avance(0);
   for(const [id,v] of ents){const nuevoArch=!sub.has(id);if(nuevoArch){prog.i++;prog.pct=-1;avance(0)}
-   media[id]=await serial(v,'users/'+u+'/media/'+id,nuevoArch);if(nuevoArch){sub.add(id);marcarSubido(sub)}
+   media[id]=await serial(v,RAIZ+'/'+u+'/media/'+id,nuevoArch);if(nuevoArch){sub.add(id);marcarSubido(sub)}
    if(v.poster||(v.blob&&/^video/.test(v.blob.type)))nv++}
   if(prog){prog=null;estadoNube('Guardando registro…','sync')}
-  await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(media),nFotos:ids.length-nv,nVideos:nv});
+  await FB.setDoc(RAIZ+'/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(media),nFotos:ids.length-nv,nVideos:nv});
   localStorage.setItem('rr_bk',String(Date.now()));nubeLista=null;
   estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})+(grandes?' · '+grandes+' video(s) de más de 25 MB quedan solo en el teléfono':''),'ok');if(manual)toast('Respaldo completo ☁️');return true}
- catch(e){console.error(e);prog=null;estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
+ catch(e){console.error(e);prog=null;if(!rt&&esPermiso(e))return 'perm';estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
  finally{prog=null;nubePct.textContent='';bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
 function errNube(e){const c=(e&&e.code)||'';
  if(/stalled/.test(c))return 'la nube no responde: revisa la señal y que Firestore esté creado con sus reglas';
- if(/permission|unauthorized/.test(c))return 'sin permiso: revisa las reglas de Firestore (deben decir /users/{uid})';
+ if(/permission|unauthorized/.test(c))return 'sin permiso: revisa que las reglas de Firestore estén publicadas';
  if(/popup-closed|cancelled-popup/.test(c))return 'ventana cerrada';if(/popup-blocked/.test(c))return 'ventana bloqueada por el navegador';
  if(/unauthorized-domain/.test(c))return 'dominio no autorizado en Firebase';if(/network|unavailable/.test(c))return 'sin conexión';
  if(/resource-exhausted|quota/.test(c))return 'se alcanzó el límite gratis de Firebase por hoy';return (e&&e.message)||'error'}
-async function restaurar(rid){const u=usuario.uid;const doc=await FB.getDoc('users/'+u+'/registros/'+rid);if(!doc)return toast('Registro no encontrado');
+async function restaurar(rid){const u=usuario.uid;const doc=await FB.getDoc(RAIZ+'/'+u+'/registros/'+rid);if(!doc)return toast('Registro no encontrado');
  const vacio=!D.partes.length&&!(D.titulo||'').trim();
  if(!vacio&&!confirm('Se reemplazará el registro actual en pantalla por "'+(doc.titulo||'Sin título')+'". El actual queda respaldado en la nube. ¿Continuar?'))return;
  if(!vacio&&!(await respaldar(false))&&!confirm('No se pudo respaldar el registro actual. ¿Reemplazarlo igual?'))return;
@@ -525,7 +531,7 @@ async function restaurar(rid){const u=usuario.uid;const doc=await FB.getDoc('use
 async function abrirNube(){nubeEl.classList.add('on');pintarNube();
  try{await fbInit()}catch(e){nubeEstado='No se pudo conectar con Firebase (¿sin internet?)';btnNube.className='err'}pintarNube()}
 function cerrarNube(){nubeEl.classList.remove('on')}
-async function verLista(){nubeLista='cargando';pintarNube();try{nubeLista=await FB.list('users/'+usuario.uid+'/registros')}catch(e){nubeLista=null;toast('Error: '+errNube(e),4000)}pintarNube()}
+async function verLista(){nubeLista='cargando';pintarNube();try{try{nubeLista=await FB.list(RAIZ+'/'+usuario.uid+'/registros')}catch(e){if(!esPermiso(e))throw e;otraRaiz();nubeLista=await FB.list(RAIZ+'/'+usuario.uid+'/registros')}}catch(e){nubeLista=null;toast('Error: '+errNube(e),4000)}pintarNube()}
 function pintarNube(){if(!nubeEl.classList.contains('on'))return;const c=nube_c;
  if(!FB){c.innerHTML=`<p>${esc(nubeEstado||'Conectando…')}</p>`;return}
  if(!usuario){c.innerHTML=`<p>Entra con tu cuenta Google para respaldar automáticamente tus registros, fotos y videos. Si cambias o pierdes el teléfono, los recuperas entrando con la misma cuenta.</p>
