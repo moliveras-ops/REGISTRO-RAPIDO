@@ -111,6 +111,7 @@ button.mv{background:#556}
 <input type="file" id="gal" accept="image/*" hidden>
 <input type="file" id="vcam" accept="video/*" capture="environment" hidden>
 <input type="file" id="vgal" accept="video/*" hidden>
+<input type="file" id="imp" accept=".zip,.docx,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
 <script>
 'use strict';
 /* ===== Almacenamiento: estructura en localStorage, fotos (Blob) en IndexedDB ===== */
@@ -533,9 +534,10 @@ async function abrirNube(){nubeEl.classList.add('on');pintarNube();
 function cerrarNube(){nubeEl.classList.remove('on')}
 async function verLista(){nubeLista='cargando';pintarNube();try{try{nubeLista=await FB.list(RAIZ+'/'+usuario.uid+'/registros')}catch(e){if(!esPermiso(e))throw e;otraRaiz();nubeLista=await FB.list(RAIZ+'/'+usuario.uid+'/registros')}}catch(e){nubeLista=null;toast('Error: '+errNube(e),4000)}pintarNube()}
 function pintarNube(){if(!nubeEl.classList.contains('on'))return;const c=nube_c;
- if(!FB){c.innerHTML=`<p>${esc(nubeEstado||'Conectando…')}</p>`;return}
+ if(!FB){c.innerHTML=`<p>${esc(nubeEstado||'Conectando…')}</p><button class="nb sec" data-n="imp">📦 Importar respaldo (ZIP o Word)</button>`;return}
  if(!usuario){c.innerHTML=`<p>Entra con tu cuenta Google para respaldar automáticamente tus registros, fotos y videos. Si cambias o pierdes el teléfono, los recuperas entrando con la misma cuenta.</p>
-  <button class="nb" data-n="login">Entrar con Google</button>${nubeEstado?`<p class="est">${esc(nubeEstado)}</p>`:''}`;return}
+  <button class="nb" data-n="login">Entrar con Google</button>${nubeEstado?`<p class="est">${esc(nubeEstado)}</p>`:''}
+  <button class="nb sec" data-n="imp">📦 Importar respaldo (ZIP o Word)</button>`;return}
  const ult=+localStorage.getItem('rr_bk')||0;
  c.innerHTML=`<p>Conectado como <b>${esc(usuario.email||usuario.displayName||'')}</b></p>
   <p class="est ${btnNube.className}">${esc(nubeEstado||(ult?'Último respaldo: '+new Date(ult).toLocaleString('es-CL'):'Aún sin respaldo'))}</p>
@@ -544,6 +546,8 @@ function pintarNube(){if(!nubeEl.classList.contains('on'))return;const c=nube_c;
   <button class="nb" data-n="bk">Respaldar ahora</button>
   <button class="nb sec" data-n="lista">Restaurar un registro de la nube</button>
   ${nubeLista==='cargando'?'<p>Cargando…</p>':Array.isArray(nubeLista)?(nubeLista.length?'<div class="lst">'+nubeLista.map(r=>`<button data-n="rest" data-id="${esc(r.id)}"><b>${esc(r.titulo||'Sin título')}</b>${r.id===D.rid?' <i>(actual)</i>':''}<small>${r.fecha?r.fecha.toLocaleString('es-CL'):''} · ${r.nFotos||0} foto(s)${r.nVideos?' · '+r.nVideos+' video(s)':''}</small></button>`).join('')+'</div>':'<p>No hay registros en la nube.</p>'):''}
+  <button class="nb sec" data-n="imp">📦 Importar respaldo (ZIP o Word)</button>
+  <p class="mini">Importa el ZIP o el Word que exportó la app: recupera partes, fotos y videos, y los sube a la nube.</p>
   <button class="nb out" data-n="logout">Cerrar sesión</button>`}
 const nubeEl=document.getElementById('nube');
 btnNube.onclick=abrirNube;nube_x.onclick=cerrarNube;nubeEl.onclick=e=>{if(e.target===nubeEl)cerrarNube()};
@@ -551,10 +555,58 @@ nube_c.addEventListener('click',async e=>{const b=e.target.closest('[data-n]');i
  if(a==='login'){try{nubeEstado='';await FB.login()}catch(err){estadoNube('No se pudo entrar: '+errNube(err),'err')}}
  else if(a==='logout'){if(confirm('¿Cerrar sesión? Los datos en el teléfono no se borran.')){await FB.logout();nubeEstado='';nubeLista=null;btnNube.className=''}}
  else if(a==='bk')respaldar(true);
+ else if(a==='imp')imp.click();
  else if(a==='lista')verLista();
  else if(a==='rest')restaurar(b.dataset.id)});
 addEventListener('online',()=>programarRespaldo(3000));
 if(localStorage.getItem('rr_login')==='1')fbInit().catch(()=>{});
+
+/* ===== Importar respaldo (ZIP exportado por la app, o su Word .docx) ===== */
+async function importar(file){
+ await cargar('lib/jszip.min.js');const J=window.JSZip;let docx,zip=null;
+ if(/\.zip$/i.test(file.name)){zip=await J.loadAsync(file);const ent=Object.values(zip.files).filter(f=>!f.dir&&/\.docx$/i.test(f.name)&&!/(^|\/)~\$/.test(f.name));
+  if(!ent.length)throw new Error('el ZIP no contiene el informe Word (.docx)');docx=await J.loadAsync(await ent[0].async('arraybuffer'))}
+ else docx=await J.loadAsync(file);
+ const xml=await docx.file('word/document.xml').async('string'),rx=await docx.file('word/_rels/document.xml.rels').async('string');
+ const dp=new DOMParser(),doc=dp.parseFromString(xml,'application/xml'),rels={};
+ for(const r of dp.parseFromString(rx,'application/xml').getElementsByTagName('Relationship'))rels[r.getAttribute('Id')]=r.getAttribute('Target');
+ const N={titulo:'',partes:[]},pila=[];let actual=null,nf=0,nv=0;
+ const texto=p=>[...p.getElementsByTagName('w:t')].map(t=>t.textContent).join('').trim();
+ for(const p of doc.getElementsByTagName('w:p')){
+  const st=p.getElementsByTagName('w:pStyle')[0],sv=st?st.getAttribute('w:val'):'';
+  if(sv==='Title'){if(!N.titulo)N.titulo=texto(p);continue}
+  const m=/^Heading([123])$/.exec(sv);
+  if(m){const lv=+m[1]-1,o=nuevo();o.nombre=texto(p).replace(/^\d+(\.\d+)*\.?\s*/,'').replace(/^\(sin nombre\)$/,'');o._num=(texto(p).match(/^\d+(\.\d+)*/)||[''])[0];
+   pila.length=lv;let padreL=lv?pila[lv-1]:null;
+   if(lv&&!padreL){padreL=nuevo();if(lv>1&&pila[0])pila[0].hijos.push(padreL);else N.partes.push(padreL);pila[lv-1]=padreL}
+   (padreL?padreL.hijos:N.partes).push(o);pila[lv]=o;actual=o;continue}
+  if(!actual)continue;
+  for(const dr of p.getElementsByTagName('w:drawing')){
+   const pr=dr.getElementsByTagName('wp:docPr')[0],bl=dr.getElementsByTagName('a:blip')[0];if(!pr||!bl)continue;
+   if(!/^Foto/i.test(pr.getAttribute('name')||'')||actual.fotos.length>=MAXF)continue; // las miniaturas de video se regeneran desde el video
+   const t=rels[bl.getAttribute('r:embed')];if(!t)continue;const f=docx.file('word/'+t.replace(/^\/?word\//,''))||docx.file(t.replace(/^\//,''));if(!f)continue;
+   const blob=new Blob([await f.async('uint8array')],{type:'image/jpeg'});let w=0,h=0;
+   try{const bm=await createImageBitmap(blob);w=bm.width;h=bm.height;bm.close()}catch(e){continue}
+   const id=uid();await fPut(id,{blob,w,h});actual.fotos.push(id);actual.req=true;nf++;toast('Importando fotos… '+nf,0)}}
+ if(zip){const porNum={};const w=(l)=>l.forEach(o=>{if(o._num)porNum[o._num]=o;w(o.hijos)});w(N.partes);
+  for(const f of Object.values(zip.files)){if(f.dir||!/\.(mp4|mov|webm|3gp|m4v|mkv)$/i.test(f.name))continue;
+   const base=f.name.split('/').pop(),num=(base.match(/^\d+(\.\d+)*/)||[''])[0],o=porNum[num];if(!o||o.video)continue;
+   toast('Importando video '+(nv+1)+'…',0);const ext=base.split('.').pop().toLowerCase();
+   const vf=new File([await f.async('blob')],base,{type:ext==='mov'?'video/quicktime':'video/'+(ext==='m4v'?'mp4':ext)});
+   const v=await procVideo(vf),id=uid();await fPut(id,v);o.video=id;nv++}}
+ const limpiar=l=>l.forEach(o=>{delete o._num;limpiar(o.hijos)});limpiar(N.partes);
+ if(!N.partes.length)throw new Error('no se encontraron partes en el informe');
+ return{N,nf,nv}}
+async function alImportar(){const f=imp.files[0];imp.value='';if(!f)return;
+ const vacio=!D.partes.length&&!(D.titulo||'').trim();
+ if(!vacio&&!confirm('Se reemplazará el registro en pantalla por el del archivo "'+f.name+'".'+(usuario?' El actual queda respaldado en la nube.':' El actual se borrará del teléfono.')+' ¿Continuar?'))return;
+ if(!vacio&&usuario&&!(await respaldar(false))&&!confirm('No se pudo respaldar el registro actual. ¿Reemplazarlo igual?'))return;
+ cerrarNube();toast('Leyendo respaldo…',0);
+ try{const {N,nf,nv}=await importar(f);D=N;normalizar(D.partes);D.rid=uid();urls.forEach(u=>URL.revokeObjectURL(u));urls.clear();
+  save();tit.value=D.titulo||'';render();updPend();
+  toast('Importado: '+nf+' foto(s)'+(nv?', '+nv+' video(s)':'')+(usuario?' · subiendo a la nube…':' · entra con Google en ☁️ para subirlo'),5000)}
+ catch(e){console.error(e);toast('No se pudo importar: '+e.message,5000)}}
+imp.onchange=alImportar;
 
 /* ===== Migración desde la versión anterior (fotos en base64 dentro de localStorage) ===== */
 async function migrar(){const old=localStorage.getItem('rr2');if(!old||localStorage.getItem(KEY))return false;
