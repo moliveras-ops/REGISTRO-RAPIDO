@@ -77,7 +77,9 @@ button.mv{background:#556}
 #mov .dst.l1{margin-left:16px;width:calc(100% - 16px)}#mov .dst.l2{margin-left:32px;width:calc(100% - 32px)}
 #mov .dst small{display:block;font-weight:400;color:#556;font-size:12px;margin-top:2px}
 #mov .nota{font-size:12px;color:#667;margin-top:8px}
-#btnNube{background:#ffffff26;font-size:18px;padding:6px 10px;position:relative}
+#btnNube{background:#ffffff26;font-size:18px;padding:6px 10px;position:relative;display:flex;align-items:center;gap:4px}
+#nubePct{font-size:13px;font-weight:700;color:#ffd54f}#nubePct:empty{display:none}
+#nube .pbar{height:12px;background:#e8eef6;border-radius:6px;overflow:hidden;margin:6px 0 2px}#nube .pbar i{display:block;height:100%;background:#ffb300;transition:width .3s}
 #btnNube::after{content:'';position:absolute;right:4px;bottom:4px;width:9px;height:9px;border-radius:50%;background:transparent}
 #btnNube.ok::after{background:#4caf50}#btnNube.sync::after{background:#ffd54f}#btnNube.err::after,#btnNube.warn::after{background:#ff7043}
 #nube{position:fixed;inset:0;background:#0008;z-index:15;display:none;align-items:flex-end;justify-content:center}
@@ -92,7 +94,7 @@ button.mv{background:#556}
 #nube .lst button{display:block;width:100%;text-align:left;background:#e8eef6;color:#0b3d6e;margin:6px 0;padding:10px}
 #nube .lst small{display:block;color:#556;font-size:12px;margin-top:2px}
 </style></head><body>
-<header><span>Registro Rápido <small id="pend"></small></span><button id="btnNube" aria-label="Respaldo en la nube">☁️</button><button class="x" id="btnNuevo">Nuevo</button></header>
+<header><span>Registro Rápido <small id="pend"></small></span><button id="btnNube" aria-label="Respaldo en la nube">☁️<small id="nubePct"></small></button><button class="x" id="btnNuevo">Nuevo</button></header>
 <main>
 <input id="tit" placeholder="Título del informe" autocomplete="off">
 <div id="L"></div>
@@ -449,9 +451,10 @@ function fbInit(){return fbP||(fbP=(async()=>{
  if(window.__FB_MOCK){FB=window.__FB_MOCK}else{
   const B='https://www.gstatic.com/firebasejs/11.10.0/';
   const [ap,au,fs,st]=await Promise.all(['firebase-app','firebase-auth','firebase-firestore','firebase-storage'].map(m=>import(B+m+'.js')));
-  const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app),S=st.getStorage(app);
+  const app=ap.initializeApp(firebaseConfig),A=au.getAuth(app),F=fs.getFirestore(app),S=st.getStorage(app);S.maxUploadRetryTime=60000;S.maxOperationRetryTime=60000;
   FB={onUser:cb=>au.onAuthStateChanged(A,cb),login:()=>au.signInWithPopup(A,new au.GoogleAuthProvider()),logout:()=>au.signOut(A),
-   put:(path,blob)=>st.uploadBytes(st.ref(S,path),blob,{contentType:blob.type||'application/octet-stream'}),
+   put:(path,blob,onp)=>new Promise((ok,ko)=>{const t=st.uploadBytesResumable(st.ref(S,path),blob,{contentType:blob.type||'application/octet-stream'});
+    t.on('state_changed',x=>onp&&onp(x.bytesTransferred),ko,()=>ok())}),
    getBlob:path=>st.getBlob(st.ref(S,path)),
    setDoc:(path,data)=>fs.setDoc(fs.doc(F,path),{...data,actualizado:fs.serverTimestamp()}),
    getDoc:async path=>{const d=await fs.getDoc(fs.doc(F,path));return d.exists()?d.data():null},
@@ -463,9 +466,14 @@ const subKey=()=>'rr_sub_'+(usuario?usuario.uid:'');
 function subidos(){try{return new Set(JSON.parse(localStorage.getItem(subKey())||'[]'))}catch(e){return new Set()}}
 function marcarSubido(s){try{localStorage.setItem(subKey(),JSON.stringify([...s]))}catch(e){}}
 function programarRespaldo(ms=15000){if(!usuario)return;clearTimeout(bkT);bkT=setTimeout(()=>respaldar(false),ms)}
-function estadoNube(t,clase){nubeEstado=t;btnNube.className=clase||'';pintarNube()}
+function estadoNube(t,clase){nubeEstado=t;btnNube.className=clase||'';nubePct.textContent=prog&&prog.pct>=0?prog.pct+'%':'';pintarNube()}
 function mediaIds(){const a=[];const w=o=>{o.fotos.forEach(f=>a.push(f));if(o.video)a.push(o.video);o.hijos.forEach(w)};D.partes.forEach(w);return a}
-async function serial(x,path,subir){if(x instanceof Blob){if(subir)await FB.put(path,x);return{__b:path,t:x.type||''}}
+var prog=null; // {hecho,tot,i,n,pct}
+function bytesDe(x){if(x instanceof Blob)return x.size;if(x&&typeof x==='object'&&!Array.isArray(x))return Object.values(x).reduce((a,v)=>a+bytesDe(v),0);return 0}
+const tam=b=>b<1048576?Math.round(b/1024)+' KB':(b/1048576).toFixed(1)+' MB';
+function avance(cur){if(!prog)return;prog.cur=cur;const pct=Math.min(99,Math.floor((prog.hecho+cur)/Math.max(1,prog.tot)*100));if(pct===prog.pct)return;prog.pct=pct;
+ estadoNube('Subiendo '+pct+'% ('+prog.i+' de '+prog.n+')','sync')}
+async function serial(x,path,subir){if(x instanceof Blob){if(subir){await FB.put(path,x,avance);if(prog){prog.hecho+=x.size;prog.pct=-1;avance(0)}}return{__b:path,t:x.type||''}}
  if(x&&typeof x==='object'&&!Array.isArray(x)){const o={};for(const k of Object.keys(x))o[k]=await serial(x[k],path+'/'+k,subir);return o}return x}
 async function deserial(x){if(x&&typeof x==='object'&&x.__b){const b=await FB.getBlob(x.__b);return x.t&&b.type!==x.t?new Blob([b],{type:x.t}):b}
  if(x&&typeof x==='object'&&!Array.isArray(x)){const o={};for(const k of Object.keys(x))o[k]=await deserial(x[k]);return o}return x}
@@ -474,17 +482,21 @@ async function respaldar(manual){if(!usuario){if(manual)toast('Primero entra con
  if(!D.partes.length&&!(D.titulo||'').trim())return true;
  if(bkOcupado){bkOtra=true;return false}bkOcupado=true;clearTimeout(bkT);
  try{const u=usuario.uid;if(!D.rid){D.rid=uid();save(true)}
-  const ids=mediaIds(),sub=subidos(),media={};let n=0,nv=0;
-  for(const id of ids){const v=await fGet(id);if(!v)continue;const nuevoArch=!sub.has(id);
-   if(nuevoArch)estadoNube('Subiendo '+(++n)+'…','sync');
+  const ids=mediaIds(),sub=subidos(),media={};let nv=0;
+  const ents=[];for(const id of ids){const v=await fGet(id);if(v)ents.push([id,v])}
+  const nuevos=ents.filter(([id])=>!sub.has(id));
+  prog=nuevos.length?{hecho:0,tot:nuevos.reduce((a,[,v])=>a+bytesDe(v),0),i:0,n:nuevos.length,pct:-1}:null;
+  if(prog)avance(0);
+  for(const [id,v] of ents){const nuevoArch=!sub.has(id);if(nuevoArch){prog.i++;prog.pct=-1;avance(0)}
    media[id]=await serial(v,'users/'+u+'/media/'+id,nuevoArch);if(nuevoArch){sub.add(id);marcarSubido(sub)}
    if(v.poster||(v.blob&&/^video/.test(v.blob.type)))nv++}
+  if(prog){prog=null;estadoNube('Guardando registro…','sync')}
   await FB.setDoc('users/'+u+'/registros/'+D.rid,{titulo:(D.titulo||'').trim(),data:JSON.stringify(D),media:JSON.stringify(media),nFotos:ids.length-nv,nVideos:nv});
   localStorage.setItem('rr_bk',String(Date.now()));nubeLista=null;
   estadoNube('Respaldado '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}),'ok');if(manual)toast('Respaldo completo ☁️');return true}
  catch(e){console.error(e);estadoNube('Error al respaldar: '+errNube(e),'err');if(manual)toast('No se pudo respaldar: '+errNube(e),4000);return false}
- finally{bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
-function errNube(e){const c=(e&&e.code)||'';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
+ finally{prog=null;nubePct.textContent='';bkOcupado=false;if(bkOtra){bkOtra=false;programarRespaldo(2000)}}}
+function errNube(e){const c=(e&&e.code)||'';if(/retry-limit/.test(c))return 'la subida no avanza: revisa la señal o que Storage esté activo en Firebase (plan Blaze y reglas)';if(/permission|unauthorized/.test(c))return 'sin permiso (revisa las reglas de Firebase)';
  if(/popup-closed|cancelled-popup/.test(c))return 'ventana cerrada';if(/popup-blocked/.test(c))return 'ventana bloqueada por el navegador';
  if(/unauthorized-domain/.test(c))return 'dominio no autorizado en Firebase';if(/network|unavailable/.test(c))return 'sin conexión';
  if(/quota|billing|project-not-found|bucket/i.test(c+' '+(e.message||'')))return 'Storage no habilitado (requiere plan Blaze)';return (e&&e.message)||'error'}
@@ -508,6 +520,7 @@ function pintarNube(){if(!nubeEl.classList.contains('on'))return;const c=nube_c;
  const ult=+localStorage.getItem('rr_bk')||0;
  c.innerHTML=`<p>Conectado como <b>${esc(usuario.email||usuario.displayName||'')}</b></p>
   <p class="est ${btnNube.className}">${esc(nubeEstado||(ult?'Último respaldo: '+new Date(ult).toLocaleString('es-CL'):'Aún sin respaldo'))}</p>
+  ${prog&&prog.pct>=0?`<div class="pbar"><i style="width:${prog.pct}%"></i></div><p class="mini">${tam(prog.hecho+(prog.cur||0))} de ${tam(prog.tot)}</p>`:''}
   <p class="mini">El registro actual se respalda solo, unos segundos después de cada cambio.</p>
   <button class="nb" data-n="bk">Respaldar ahora</button>
   <button class="nb sec" data-n="lista">Restaurar un registro de la nube</button>
