@@ -30,8 +30,19 @@ button.x{background:#c62828}button.g{background:#2e7d32}button.add{background:#2
 .ftog{background:#889;font-size:13px;padding:8px 12px;margin:6px 0 2px}
 .ftog.on{background:#2e7d32}
 #pend{font-size:13px;color:#ffd54f;font-weight:500}
-.rot{font-size:11px;color:#445;margin-top:3px;line-height:1.25;word-break:break-word}
-.rot b{color:#0b3d6e}
+.rot{font-size:12px;font-weight:600;color:#0b3d6e;background:#e8eef6;border-radius:0 0 8px 8px;padding:5px 6px;line-height:1.25;word-break:break-word;text-align:center}
+.rot.warn{color:#b3261e;background:#fdecea}
+.rot.pend{color:#8a5a00;background:#fff3d6;border-radius:8px;margin-top:4px}
+.box.on{border-radius:8px 8px 0 0}
+.bdg{position:absolute;top:4px;left:4px;background:#0b3d6ee6;color:#fff;font-size:12px;font-weight:700;padding:3px 7px;border-radius:12px;pointer-events:none}
+.c .bdg{background:#2a6fb0e6}.s .bdg{background:#e08a00e6}
+.box img{cursor:zoom-in}
+#ver{position:fixed;inset:0;background:#000;z-index:20;display:none;flex-direction:column}
+#ver.on{display:flex}
+#ver .vt{color:#fff;background:#0b3d6e;padding:12px 50px 12px 14px;padding-top:max(12px,env(safe-area-inset-top));font-weight:700;font-size:15px;position:relative}
+#ver .vt button{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#c62828;width:36px;height:36px;border-radius:50%;padding:0;font-size:20px}
+#ver img{flex:1;min-height:0;object-fit:contain;width:100%}
+#ver .vb{color:#0b3d6e;background:#e8eef6;padding:12px 14px;padding-bottom:max(12px,env(safe-area-inset-bottom));font-weight:700;text-align:center;font-size:15px}
 #bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:8px;padding-bottom:max(8px,env(safe-area-inset-bottom));display:flex;gap:8px;box-shadow:0 -2px 6px #0002;z-index:5}
 #bar button{flex:1;padding:13px;font-size:15px}
 #tit{width:100%;font-size:16px;padding:10px;border-radius:6px;border:1px solid #ccd}
@@ -47,6 +58,7 @@ button.x{background:#c62828}button.g{background:#2e7d32}button.add{background:#2
 </main>
 <div id="bar"><button id="btnWord">Informe Word</button><button class="g" id="btnPdf">Informe PDF</button></div>
 <div id="msg"></div>
+<div id="ver"><div class="vt"><span id="ver_t"></span><button id="ver_x" aria-label="Cerrar">×</button></div><img id="ver_i" alt=""><div class="vb" id="ver_b"></div></div>
 <input type="file" id="cam" accept="image/*" capture="environment" hidden>
 <input type="file" id="gal" accept="image/*" hidden>
 <script>
@@ -97,9 +109,9 @@ const tieneF=o=>o.fotos.some(Boolean);
 function fotosHTML(o){const on=o.req||tieneF(o);
  return `<button class="ftog${on?' on':''}" data-a="req">📷 ${on?'Requiere fotos ✓':'Requiere fotos'}</button>${on?`<div class="fotos">${[0,1].map(k=>slot(o,k)).join('')}</div>`:''}`}
 function slot(o,k){const f=o.fotos[k];
- return `<div class="slot" data-k="${k}">${f?`<div class="box on"><img data-f="${f}" alt="Foto ${k+1}"><button class="del" data-a="delF" aria-label="Quitar foto">×</button></div>`
+ return `<div class="slot" data-k="${k}">${f?`<div class="box on"><img data-f="${f}" data-a="ver" alt="Foto ${k+1}"><span class="bdg"></span><button class="del" data-a="delF" aria-label="Quitar foto">×</button></div>`
  :`<div class="box"><button data-a="cam">📷 Cámara</button><button data-a="gal">🖼️ Galería</button></div>`}
-<div class="rot"><b>Foto ${k+1}:</b> <span></span></div></div>`}
+<div class="rot${f?'':' pend'}"></div></div>`}
 
 function render(focusPath){
  L.innerHTML=D.partes.length?D.partes.map((o,i)=>nodo(o,[i])).join(''):'<div class="vacio">Comienza con “+ Parte”. Cada elemento admite 2 fotos.</div>';
@@ -108,7 +120,15 @@ function render(focusPath){
 }
 function refrescarFotos(n,o){n.querySelectorAll(':scope>.fotos,:scope>.ftog').forEach(e=>e.remove());
  n.querySelector(':scope>.row').insertAdjacentHTML('afterend',fotosHTML(o));rotulos();cargarImgs(n.querySelector(':scope>.fotos'))}
-function rotulos(){L.querySelectorAll('.n').forEach(n=>{const r=ruta(P(n.dataset.p));n.querySelectorAll(':scope>.fotos .rot span').forEach(s=>s.textContent=r)})}
+function rotulos(){L.querySelectorAll('.n').forEach(n=>{const p=P(n.dataset.p),r=ruta(p),num=p.map(i=>i+1).join('.');
+ let o={hijos:D.partes};const falta=p.some(i=>!(o=o.hijos[i]).nombre.trim());
+ n.querySelectorAll(':scope>.fotos>.slot').forEach(sl=>{const k=+sl.dataset.k,rt=sl.querySelector('.rot'),b=sl.querySelector('.bdg');
+  if(b){b.textContent=num+' · Foto '+(k+1);rt.textContent=falta?'⚠ Falta nombre: '+r:r;rt.classList.toggle('warn',falta)}
+  else rt.textContent='Foto '+(k+1)+' pendiente'})})}
+function ver(n,k){const p=P(n.dataset.p),o=get(p),im=n.querySelector(`:scope>.fotos>.slot[data-k="${k}"] img`);if(!im)return;
+ const nm=o.nombre.trim()||'(sin nombre)';
+ ver_t.textContent=p.map(i=>i+1).join('.')+' · Foto '+(k+1)+' · '+nm;ver_b.textContent=ruta(p);ver_i.src=im.src;verEl.classList.add('on');history.pushState({ver:1},'')}
+function cerrarVer(){if(verEl.classList.contains('on')){verEl.classList.remove('on');ver_i.removeAttribute('src')}}
 function cargarImgs(root){root.querySelectorAll('img[data-f]').forEach(async im=>{const u=await urlDe(im.dataset.f);if(u)im.src=u;else im.alt='(foto no disponible)'})}
 
 /* ===== Eventos (delegación) ===== */
@@ -122,6 +142,7 @@ L.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b|
  else if(a==='del'){const nf=fotosDe(o).length;
   if((o.nombre||nf||o.hijos.length)&&!confirm(`¿Eliminar ${NIV[p.length-1].toLowerCase()} "${o.nombre||'(sin nombre)'}"${o.hijos.length?' y todo su contenido':''}?`))return;
   const ids=fotosDe(o);padre(p).hijos.splice(p.at(-1),1);save();ids.forEach(soltarURL);render();fDel(ids).catch(()=>{})}
+ else if(a==='ver'){ver(n,+b.closest('.slot').dataset.k)}
  else if(a==='req'){if(tieneF(o))return toast('Quita las fotos para desmarcar');o.req=!o.req;save();refrescarFotos(n,o)}
  else if(a==='cam'||a==='gal'){tgt={id:o.id,k:+b.closest('.slot').dataset.k};const inp=a==='cam'?cam:gal;inp.value='';inp.click()}
  else if(a==='delF'){const k=+b.closest('.slot').dataset.k,id=o.fotos[k];o.fotos[k]=null;save();soltarURL(id);
@@ -151,6 +172,9 @@ async function alElegir(inp){const f=inp.files[0],t=tgt;tgt=null;if(!f||!t)retur
   const el=L.querySelector(`[data-p="${p2.join('.')}"]`);if(el)refrescarFotos(el,o);
   toast('Foto guardada')}
  catch(e){toast('Error con la foto: '+e.message)}}
+const verEl=document.getElementById('ver');
+ver_x.onclick=()=>history.back();verEl.onclick=e=>{if(e.target===verEl||e.target===ver_i)history.back()};
+addEventListener('popstate',cerrarVer);
 cam.onchange=()=>alElegir(cam);gal.onchange=()=>alElegir(gal);
 
 /* ===== Utilidades ===== */
