@@ -48,6 +48,12 @@ textarea.nota{display:block;width:100%;margin:6px 0 2px;font:15px system-ui,sans
 #bar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:8px;padding-bottom:max(8px,env(safe-area-inset-bottom));display:flex;gap:8px;box-shadow:0 -2px 6px #0002;z-index:5}
 #bar button{flex:1;padding:13px 6px;font-size:15px}
 button.z{background:#6a1b9a}
+#busq{position:sticky;top:var(--hh,52px);z-index:4;background:#eef1f5;padding:6px 0;display:flex;gap:6px;align-items:center}
+#bus{flex:1;min-width:0;font-size:16px;padding:10px 12px;border:1px solid #ccd;border-radius:20px;background:#fff}
+#busN{font-size:12px;color:#556;white-space:nowrap}
+#busX{background:#889;border-radius:50%;width:32px;height:32px;padding:0;font-size:17px;display:none}
+.n.hide{display:none}
+.n.hit>.row input{background:#fff3b0}
 #tit{width:100%;font-size:16px;padding:10px;border-radius:6px;border:1px solid #ccd}
 #addP{width:100%;margin-top:8px;padding:13px;font-size:15px}
 #msg{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#222;color:#fff;padding:9px 14px;border-radius:20px;font-size:14px;display:none;z-index:9;max-width:90%;text-align:center}
@@ -99,6 +105,7 @@ button.mv{background:#556}
 <header><span>Registro Rápido <small id="pend"></small></span><button id="btnNube" aria-label="Respaldo en la nube">☁️<small id="nubePct"></small></button><button class="x" id="btnNuevo">Nuevo</button></header>
 <main>
 <input id="tit" placeholder="Título del informe" autocomplete="off">
+<div id="busq"><input id="bus" type="search" placeholder="🔍 Buscar parte, componente, nota o número…" autocomplete="off" enterkeyhint="search"><span id="busN"></span><button id="busX" aria-label="Limpiar búsqueda">×</button></div>
 <div id="L"></div>
 <button id="addP">+ Parte</button>
 </main>
@@ -182,6 +189,8 @@ function slot(o,k){const f=o.fotos[k];
 function render(focusPath){
  L.innerHTML=D.partes.length?D.partes.map((o,i)=>nodo(o,[i])).join(''):'<div class="vacio">Comienza con “+ Parte”. Cada elemento admite 4 fotos (más 8 adicionales), un video y una nota.</div>';
  rotulos();cargarImgs(L);L.querySelectorAll('textarea.nota').forEach(ajustarNota);
+ if(focusPath!=null&&bus.value){bus.value='';}
+ filtrar();
  if(focusPath!=null){const el=L.querySelector(`[data-p="${focusPath}"]>.row input`);if(el){el.focus({preventScroll:true});el.scrollIntoView({block:'center',behavior:'smooth'})}}
 }
 function refrescarFotos(n,o){n.querySelectorAll(':scope>.fotos,:scope>.ftog').forEach(e=>e.remove());
@@ -201,6 +210,26 @@ async function verVideo(p,o){const u=await urlDe(o.video);if(!u)return toast('Vi
  ver_i.style.display='none';ver_v.style.display='block';ver_v.src=u;verEl.classList.add('on');history.pushState({ver:1},'');ver_v.play().catch(()=>{})}
 function cargarImgs(root){if(!root)return;root.querySelectorAll('img[data-f]').forEach(async im=>{const u=await urlDe(im.dataset.f);if(u)im.src=u;else im.alt='(foto no disponible)'});
  root.querySelectorAll('img[data-vp]').forEach(async im=>{const u=await urlPoster(im.dataset.vp);if(u)im.src=u;else im.remove()})}
+
+/* ===== Buscador ===== */
+const norm=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function filtrar(){const q=norm(bus.value).trim(),toks=q.split(/\s+/).filter(Boolean);busX.style.display=q?'block':'none';
+ const ns=L.querySelectorAll('.n');
+ if(!toks.length){ns.forEach(n=>n.classList.remove('hide','hit'));busN.textContent='';return}
+ const hit=new Set();let cnt=0;
+ const walk=(o,p)=>{const ps=p.join('.'),txt=norm(p.map(i=>i+1).join('.')+' '+ruta(p)+' '+(o.nota||''));
+  if(toks.every(t=>txt.includes(t))){hit.add(ps);cnt++}o.hijos.forEach((h,i)=>walk(h,[...p,i]))};
+ D.partes.forEach((o,i)=>walk(o,[i]));
+ const lista=[...hit];
+ ns.forEach(n=>{const ps=n.dataset.p;
+  const propio=hit.has(ps),desc=lista.some(h=>h.startsWith(ps+'.')),anc=lista.some(h=>ps.startsWith(h+'.'));
+  n.classList.toggle('hide',!(propio||desc||anc));n.classList.toggle('hit',propio)});
+ busN.textContent=cnt+' resultado'+(cnt===1?'':'s');
+ const f=L.querySelector('.n.hit');if(f&&!L.contains(document.activeElement))f.scrollIntoView({block:'nearest'})}
+bus.oninput=filtrar;busX.onclick=()=>{bus.value='';filtrar();bus.focus()};
+bus.addEventListener('keydown',e=>{if(e.key==='Enter')bus.blur()});
+const ajustarHH=()=>document.documentElement.style.setProperty('--hh',document.querySelector('header').offsetHeight+'px');
+ajustarHH();addEventListener('resize',ajustarHH);
 
 /* ===== Eventos (delegación) ===== */
 let rotT=0;
